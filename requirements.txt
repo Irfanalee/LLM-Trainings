@@ -1,0 +1,6 @@
+unsloth
+vllm
+bitsandbytes
+peft
+accelerate
+trl
