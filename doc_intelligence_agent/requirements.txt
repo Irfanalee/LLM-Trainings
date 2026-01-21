@@ -1,0 +1,37 @@
+# Document Intelligence Agent - Requirements
+# Install with: pip install -r requirements.txt
+
+# Core ML
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.36.0
+accelerate>=0.25.0
+bitsandbytes>=0.41.0
+
+# LoRA fine-tuning
+peft>=0.7.0
+datasets>=2.14.0
+evaluate>=0.4.0
+
+# Vision models
+einops>=0.7.0
+timm>=0.9.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# Document processing
+Pillow>=10.0.0
+PyMuPDF>=1.23.0  # fitz for PDF handling
+pdf2image>=1.16.0
+python-docx>=1.0.0
+openpyxl>=3.1.0
+
+# Web UI
+gradio>=4.0.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Utilities
+tqdm>=4.66.0
+rich>=13.0.0
+python-dotenv>=1.0.0
