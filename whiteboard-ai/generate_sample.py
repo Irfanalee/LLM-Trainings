@@ -8,7 +8,7 @@ import random
 import os
 
 def generate_sample_whiteboard(
-    output_path: str = "sample_whiteboard.jpg",
+    output_path: str = "sample_whiteboard_0.jpg",
     width: int = 1920,
     height: int = 1080
 ):
@@ -158,11 +158,12 @@ if __name__ == "__main__":
     
     # Generate main sample
     generate_sample_whiteboard()
+    #generate_multiple_samples()
     
     print("\nTo generate more samples, uncomment:")
     print("# generate_multiple_samples()")
     
     print("\n" + "="*60)
     print("Now you can test the AI with:")
-    print("  python -c 'from whiteboard_ai import WhiteboardAI; ai = WhiteboardAI(); results = ai.analyze_whiteboard(\"sample_whiteboard.jpg\"); print(results)'")
+    print("  python -c 'from whiteboard_ai import WhiteboardAI; ai = WhiteboardAI(); results = ai.analyze_whiteboard(\"sample_whiteboard_0.jpg\"); print(results)'")
     print("="*60)

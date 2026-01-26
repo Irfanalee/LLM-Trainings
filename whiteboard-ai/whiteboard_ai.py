@@ -20,6 +20,7 @@ from typing import List, Dict, Tuple
 import json
 from dataclasses import dataclass
 import re
+from scripts.improved_prompts import get_best_prompt, WHITEBOARD_PROMPT
 
 @dataclass
 class Region:
@@ -173,27 +174,28 @@ class WhiteboardAI:
         Extract structured action items using LLM
         """
         print("\n🎯 Extracting action items...")
-        
-        prompt = f"""You are an AI assistant that extracts action items from meeting notes.
+        prompt = get_best_prompt(meeting_notes)
 
-Meeting Notes:
-{meeting_notes}
+#         prompt = f"""You are an AI assistant that extracts action items from meeting notes.
 
-Extract all action items and format them as JSON array. Each action item should have:
-- task: what needs to be done
-- assignee: who is responsible (if mentioned, otherwise "Unassigned")
-- deadline: when it's due (if mentioned, otherwise "No deadline")
-- priority: High/Normal/Low (infer from context)
+# Meeting Notes:
+# {meeting_notes}
 
-Return ONLY the JSON array, no other text.
+# Extract all action items and format them as JSON array. Each action item should have:
+# - task: what needs to be done
+# - assignee: who is responsible (if mentioned, otherwise "Unassigned")
+# - deadline: when it's due (if mentioned, otherwise "No deadline")
+# - priority: High/Normal/Low (infer from context)
 
-Example format:
-[
-  {{"task": "Review Q4 budget", "assignee": "Sarah", "deadline": "Friday", "priority": "High"}},
-  {{"task": "Update documentation", "assignee": "Unassigned", "deadline": "No deadline", "priority": "Normal"}}
-]
+# Return ONLY the JSON array, no other text.
 
-JSON:"""
+# Example format:
+# [
+#   {{"task": "Review Q4 budget", "assignee": "Sarah", "deadline": "Friday", "priority": "High"}},
+#   {{"task": "Update documentation", "assignee": "Unassigned", "deadline": "No deadline", "priority": "Normal"}}
+# ]
+
+# JSON:"""
 
         messages = [
             {"role": "system", "content": "You are a helpful meeting notes assistant."},
