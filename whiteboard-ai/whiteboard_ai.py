@@ -177,25 +177,20 @@ class WhiteboardAI:
         prompt = get_best_prompt(meeting_notes)
 
 #         prompt = f"""You are an AI assistant that extracts action items from meeting notes.
-
-# Meeting Notes:
-# {meeting_notes}
-
-# Extract all action items and format them as JSON array. Each action item should have:
-# - task: what needs to be done
-# - assignee: who is responsible (if mentioned, otherwise "Unassigned")
-# - deadline: when it's due (if mentioned, otherwise "No deadline")
-# - priority: High/Normal/Low (infer from context)
-
-# Return ONLY the JSON array, no other text.
-
-# Example format:
-# [
-#   {{"task": "Review Q4 budget", "assignee": "Sarah", "deadline": "Friday", "priority": "High"}},
-#   {{"task": "Update documentation", "assignee": "Unassigned", "deadline": "No deadline", "priority": "Normal"}}
-# ]
-
-# JSON:"""
+#  Meeting Notes:
+#  {meeting_notes}
+#  Extract all action items and format them as JSON array. Each action item should have:
+#  - task: what needs to be done
+#  - assignee: who is responsible (if mentioned, otherwise "Unassigned")
+#  - deadline: when it's due (if mentioned, otherwise "No deadline")
+#  - priority: High/Normal/Low (infer from context)
+#  Return ONLY the JSON array, no other text.
+#  Example format:
+#  [
+#    {{"task": "Review Q4 budget", "assignee": "Sarah", "deadline": "Friday", "priority": "High"}},
+#    {{"task": "Update documentation", "assignee": "Unassigned", "deadline": "No deadline", "priority": "Normal"}}
+#  ]
+#  JSON:"""
 
         messages = [
             {"role": "system", "content": "You are a helpful meeting notes assistant."},
@@ -269,6 +264,15 @@ class WhiteboardAI:
         # Detect regions or use whole image
         if detect_regions:
             regions = self.detect_regions(image_path)
+            # Fallback: if no regions detected, process whole image
+            if not regions:
+                print("⚠️  No regions detected, falling back to full image OCR...")
+                w, h = image.size
+                regions = [Region(
+                    bbox=(0, 0, w, h),
+                    confidence=1.0,
+                    label="full_image"
+                )]
         else:
             # Treat whole image as one region
             w, h = image.size

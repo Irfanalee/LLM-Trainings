@@ -20,12 +20,18 @@ python -c "
 from whiteboard_ai import WhiteboardAI
 ai = WhiteboardAI()
 
-# Test with whole image (skip region detection for now)
+# Option A: Skip region detection (recommended for Phase 0)
 results = ai.analyze_whiteboard('test_whiteboard.jpg', detect_regions=False)
+
+# Option B: With region detection (will auto-fallback to full image if no regions found)
+# results = ai.analyze_whiteboard('test_whiteboard.jpg')
+
 print(results['full_text'])
 print(results['action_items'])
 "
 ```
+
+> **Note:** The pretrained YOLOv8 is trained on COCO (cars, people, etc.) and won't detect whiteboard regions. The system now auto-falls back to full image OCR when no regions are detected. Use `detect_regions=False` for faster testing until you train a custom YOLOv8 model in Phase 2.
 
 #### Step 2: Improve Prompts (30 min)
 The fastest improvement with zero training:
