@@ -39,30 +39,49 @@ env/
 *~
 .DS_Store
 
-# Data
-data/raw/
-data/processed/
-data/train/
-data/val/
+# Data and Datasets
+data/
+datasets/
 *.csv
 *.json
 *.parquet
 
-# Models
-models/checkpoints/
-models/final/
+# Models and Checkpoints
+models/
+checkpoints/
 *.pth
 *.pt
 *.h5
 *.keras
 *.onnx
 *.bin
+*.safetensors
 
 # Logs and outputs
 *.log
 logs/
 outputs/
 runs/
+
+# ML Experiment Tracking
+wandb/
+mlruns/
+tensorboard/
+
+# HuggingFace cache
+.cache/
+huggingface/
+
+# Large archive files
+*.zip
+*.tar.gz
+*.tar
+*.rar
+*.7z
+
+# Generated samples
+samples/
+generated/
 
 # OS
 .DS_Store
@@ -76,3 +95,9 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+tmp/
+temp/
+
+# Linkedin Files
+*Linkedin*
+*LINKEDIN*
