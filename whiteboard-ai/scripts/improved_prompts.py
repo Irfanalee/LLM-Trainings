@@ -8,6 +8,9 @@ without any training data.
 """
 
 # Basic prompt (current implementation)
+import torch
+
+
 BASIC_PROMPT = """You are an AI assistant that extracts action items from meeting notes.
 
 Meeting Notes:
