@@ -206,7 +206,7 @@ def train_trocr(
         per_device_eval_batch_size=batch_size,
         predict_with_generate=True,
         eval_strategy="epoch",
-        save_strategy="epoch",
+        save_strategy="no",  # Disable auto-save (PEFT bug with VisionEncoderDecoder)
         logging_steps=100,
         save_total_limit=3,
         num_train_epochs=epochs,
@@ -215,9 +215,7 @@ def train_trocr(
         warmup_steps=500,
         fp16=torch.cuda.is_available(),
         dataloader_num_workers=0,  # Use 0 for easier debugging
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
-        greater_is_better=False,
+        load_best_model_at_end=False,  # Disabled due to save_strategy="no"
         report_to="none",  # Set to "tensorboard" if you want logging
     )
 
@@ -262,10 +260,17 @@ def train_trocr(
 
     # Save final model
     print("\nSaving model...")
+    save_path = os.path.join(output_dir, "lora_adapter" if use_lora else "final_model")
+    os.makedirs(save_path, exist_ok=True)
+
     if use_lora:
-        model.save_pretrained(os.path.join(output_dir, "lora_adapter"))
+        # Save only LoRA adapter weights (workaround for PEFT bug)
+        model.base_model.save_pretrained(save_path, save_adapter=True, save_config=True)
+        # Also save just the adapter state dict as backup
+        adapter_state = {k: v for k, v in model.state_dict().items() if "lora" in k.lower()}
+        torch.save(adapter_state, os.path.join(save_path, "adapter_weights.pt"))
     else:
-        model.save_pretrained(os.path.join(output_dir, "final_model"))
+        model.save_pretrained(save_path)
     processor.save_pretrained(os.path.join(output_dir, "processor"))
 
     print(f"\nTraining complete! Model saved to {output_dir}")
