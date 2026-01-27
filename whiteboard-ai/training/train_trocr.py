@@ -264,11 +264,12 @@ def train_trocr(
     os.makedirs(save_path, exist_ok=True)
 
     if use_lora:
-        # Save only LoRA adapter weights (workaround for PEFT bug)
-        model.base_model.save_pretrained(save_path, save_adapter=True, save_config=True)
-        # Also save just the adapter state dict as backup
+        # Save LoRA adapter weights (workaround for PEFT bug with VisionEncoderDecoder)
         adapter_state = {k: v for k, v in model.state_dict().items() if "lora" in k.lower()}
         torch.save(adapter_state, os.path.join(save_path, "adapter_weights.pt"))
+        # Save config for reference
+        model.peft_config["default"].save_pretrained(save_path)
+        print(f"  Saved {len(adapter_state)} LoRA adapter weights")
     else:
         model.save_pretrained(save_path)
     processor.save_pretrained(os.path.join(output_dir, "processor"))
