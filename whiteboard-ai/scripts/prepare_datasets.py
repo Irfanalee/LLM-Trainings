@@ -42,15 +42,28 @@ def prepare_iam_for_trocr(
     iam_path = Path(iam_dir)
     output_path = Path(output_dir)
 
-    # Read transcriptions
-    words_file = iam_path / 'words.txt'
-    if not words_file.exists():
-        # Try alternative location
-        words_file = iam_path / 'ascii' / 'words.txt'
+    # Read transcriptions - try multiple possible locations
+    possible_words_files = [
+        iam_path / 'words.txt',
+        iam_path / 'words_new.txt',
+        iam_path / 'iam_words' / 'words.txt',
+        iam_path / 'ascii' / 'words.txt',
+    ]
 
-    if not words_file.exists():
-        print(f"Error: Cannot find words.txt in {iam_dir}")
+    words_file = None
+    for wf in possible_words_files:
+        if wf.exists():
+            words_file = wf
+            break
+
+    if not words_file:
+        print(f"Error: Cannot find words.txt or words_new.txt in {iam_dir}")
+        print("Searched locations:")
+        for wf in possible_words_files:
+            print(f"  - {wf}")
         return
+
+    print(f"Using transcription file: {words_file}")
 
     samples = []
 
@@ -76,9 +89,19 @@ def prepare_iam_for_trocr(
             writer_id = parts[0]  # a01
             form_id = f"{parts[0]}-{parts[1]}"  # a01-000u
 
-            image_path = iam_path / 'words' / writer_id / form_id / f"{word_id}.png"
+            # Try multiple possible paths
+            possible_paths = [
+                iam_path / 'words' / writer_id / form_id / f"{word_id}.png",
+                iam_path / 'iam_words' / 'words' / writer_id / form_id / f"{word_id}.png",
+            ]
 
-            if image_path.exists():
+            image_path = None
+            for p in possible_paths:
+                if p.exists():
+                    image_path = p
+                    break
+
+            if image_path:
                 samples.append({
                     'image_path': str(image_path),
                     'text': text
