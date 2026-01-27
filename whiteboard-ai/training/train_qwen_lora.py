@@ -221,6 +221,7 @@ def train_qwen_lora(
         report_to="none",  # Set to "tensorboard" for logging
         push_to_hub=False,
         dataloader_num_workers=2,
+        remove_unused_columns=False,  # Keep columns for formatting_func
         dataset_kwargs={"skip_prepare_dataset": True},  # We format ourselves
 
         # SFT-specific
