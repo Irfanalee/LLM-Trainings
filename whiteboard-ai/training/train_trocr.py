@@ -25,7 +25,6 @@ from transformers import (
     Seq2SeqTrainingArguments,
     default_data_collator
 )
-from datasets import load_metric
 import numpy as np
 
 
@@ -69,12 +68,23 @@ class HandwritingDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.samples[idx]
 
-        # Load image
+        # Load image and ensure it's RGB
         image_path = self.images_dir / sample['file_name']
-        image = Image.open(image_path).convert('RGB')
+        image = Image.open(image_path)
+
+        # Ensure RGB mode (IAM images are grayscale)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+
+        # Ensure minimum size (some IAM images are very small)
+        min_size = 32
+        if image.width < min_size or image.height < min_size:
+            ratio = max(min_size / image.width, min_size / image.height)
+            new_size = (int(image.width * ratio), int(image.height * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
 
         # Process image
-        pixel_values = self.processor(image, return_tensors='pt').pixel_values.squeeze()
+        pixel_values = self.processor(images=image, return_tensors='pt').pixel_values.squeeze()
 
         # Process text
         labels = self.processor.tokenizer(
@@ -204,7 +214,7 @@ def train_trocr(
         weight_decay=0.01,
         warmup_steps=500,
         fp16=torch.cuda.is_available(),
-        dataloader_num_workers=4,
+        dataloader_num_workers=0,  # Use 0 for easier debugging
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
