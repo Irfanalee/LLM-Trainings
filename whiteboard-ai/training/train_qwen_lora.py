@@ -15,13 +15,11 @@ import argparse
 from pathlib import Path
 from typing import Dict, List
 import torch
-from datasets import Dataset, load_dataset
+from datasets import Dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     BitsAndBytesConfig,
-    TrainingArguments,
-    DataCollatorForSeq2Seq
 )
 from peft import (
     LoraConfig,
@@ -29,7 +27,7 @@ from peft import (
     prepare_model_for_kbit_training,
     TaskType
 )
-from trl import SFTTrainer
+from trl import SFTTrainer, SFTConfig
 
 
 def load_action_item_dataset(data_path: str) -> Dataset:
@@ -194,7 +192,7 @@ def train_qwen_lora(
         return texts
 
     # Training arguments (optimized for A4000 16GB)
-    training_args = TrainingArguments(
+    training_args = SFTConfig(
         output_dir=output_dir,
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
@@ -223,7 +221,11 @@ def train_qwen_lora(
         report_to="none",  # Set to "tensorboard" for logging
         push_to_hub=False,
         dataloader_num_workers=2,
-        group_by_length=True,
+        dataset_kwargs={"skip_prepare_dataset": True},  # We format ourselves
+
+        # SFT-specific
+        max_length=max_seq_length,
+        packing=False,
     )
 
     # Create trainer
@@ -232,10 +234,8 @@ def train_qwen_lora(
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         formatting_func=formatting_func,
-        max_seq_length=max_seq_length,
-        packing=False,
     )
 
     # Train
