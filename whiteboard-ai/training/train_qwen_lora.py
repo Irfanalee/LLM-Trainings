@@ -178,18 +178,9 @@ def train_qwen_lora(
         val_dataset = load_action_item_dataset(val_data)
         print(f"  Val: {len(val_dataset)} samples")
 
-    # Format function for SFTTrainer
-    def formatting_func(examples):
-        texts = []
-        for i in range(len(examples['instruction'])):
-            example = {
-                'instruction': examples['instruction'][i],
-                'input': examples['input'][i],
-                'output': examples['output'][i]
-            }
-            text = format_prompt(example, tokenizer)
-            texts.append(text)
-        return texts
+    # Format function for SFTTrainer (handles single example)
+    def formatting_func(example):
+        return format_prompt(example, tokenizer)
 
     # Training arguments (optimized for A4000 16GB)
     training_args = SFTConfig(
@@ -220,9 +211,8 @@ def train_qwen_lora(
         # Other
         report_to="none",  # Set to "tensorboard" for logging
         push_to_hub=False,
-        dataloader_num_workers=2,
+        dataloader_num_workers=0,  # Use 0 to avoid multiprocessing issues
         remove_unused_columns=False,  # Keep columns for formatting_func
-        dataset_kwargs={"skip_prepare_dataset": True},  # We format ourselves
 
         # SFT-specific
         max_length=max_seq_length,
