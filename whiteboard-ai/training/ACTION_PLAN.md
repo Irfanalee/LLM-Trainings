@@ -2,144 +2,222 @@
 
 ## Overview
 
-This document provides a step-by-step guide to get your Whiteboard Meeting Notes AI working, with priorities from "quick wins today" to "production-ready system."
+This document provides a step-by-step guide to fine-tune models for the Whiteboard Meeting Notes AI using **real datasets**.
+
+**Datasets Downloaded:**
+- **Whiteboard Detection** (Roboflow): 713 images, YOLO format
+- **IAM Handwriting**: Real handwritten words with transcriptions
 
 ---
 
-## Phase 0: Quick Wins (TODAY - 2 hours)
+## Phase 0: Quick Wins (COMPLETED)
 
-### Goal: Get something working immediately without training
-
-#### Step 1: Test the Current System (30 min)
-```bash
-# Create a test whiteboard image (or use a real photo)
-python generate_sample.py
-
-# Test the pipeline
-python -c "
-from whiteboard_ai import WhiteboardAI
-ai = WhiteboardAI()
-
-# Option A: Skip region detection (recommended for Phase 0)
-results = ai.analyze_whiteboard('test_whiteboard.jpg', detect_regions=False)
-
-# Option B: With region detection (will auto-fallback to full image if no regions found)
-# results = ai.analyze_whiteboard('test_whiteboard.jpg')
-
-print(results['full_text'])
-print(results['action_items'])
-"
-```
-
-> **Note:** The pretrained YOLOv8 is trained on COCO (cars, people, etc.) and won't detect whiteboard regions. The system now auto-falls back to full image OCR when no regions are detected. Use `detect_regions=False` for faster testing until you train a custom YOLOv8 model in Phase 2.
-
-#### Step 2: Improve Prompts (30 min)
-The fastest improvement with zero training:
-
-```python
-# In whiteboard_ai.py, replace the prompt in extract_action_items()
-# with the improved version from scripts/improved_prompts.py
-
-from scripts.improved_prompts import get_best_prompt, WHITEBOARD_PROMPT
-
-# Use the whiteboard-specific prompt
-prompt = get_best_prompt(meeting_notes, "whiteboard")
-```
-
-#### Step 3: Test with Real Photos (1 hour)
-- Take 5-10 photos of real whiteboards
-- Test OCR accuracy
-- Note what works and what fails
+### Summary
+- Tested pipeline with pretrained models
+- Identified issues: TrOCR needs line-level images, YOLOv8 needs whiteboard training
+- See [step0.md](step0.md) for details
 
 ---
 
-## Phase 1: Generate Training Data (DAY 1)
+## Phase 1: Verify Downloaded Datasets
 
-### Goal: Create synthetic training data
+### Goal: Ensure datasets are ready for training
 
-#### Step 1: Generate Synthetic Whiteboards (30 min)
+#### Step 1: Check Whiteboard Detection Dataset
 ```bash
-# Generate 500 synthetic whiteboard images with annotations
-python scripts/generate_synthetic_data.py \
-    --output-dir datasets/synthetic \
-    --num-whiteboards 500 \
-    --num-action-items 5000 \
-    --num-handwriting 1000
+# Verify structure
+ls "datasets/WhiteBoard Detection.v1i.yolov8/"
+# Expected: train/, valid/, test/, data.yaml
+
+# Check data.yaml
+cat "datasets/WhiteBoard Detection.v1i.yolov8/data.yaml"
+# Expected: nc: 3, names: ['WhiteBoard', 'board', 'people']
+
+# Count images
+ls "datasets/WhiteBoard Detection.v1i.yolov8/train/images/" | wc -l
+# Expected: ~713 images
 ```
 
-#### Step 2: Verify Data Quality (15 min)
+#### Step 2: Check IAM Handwriting Dataset
 ```bash
-# Check generated files
-ls datasets/synthetic/whiteboards/images/ | head
-ls datasets/synthetic/whiteboards/labels/ | head
-cat datasets/synthetic/whiteboard_yolo.yaml
+# Verify structure
+ls datasets/Handwriting/
+# Expected: iam_words/, words_new.txt
 
-# View a sample annotation
-head -5 datasets/synthetic/whiteboards/labels/whiteboard_0000.txt
-```
+# Check transcription format
+head -10 datasets/Handwriting/words_new.txt
+# Format: image_id status graylevel components x y w h tag transcription
 
-#### Step 3: Prepare Action Items for Training (15 min)
-```bash
-python scripts/prepare_datasets.py action \
-    --input-jsonl datasets/synthetic/action_items.jsonl \
-    --output-dir datasets/action_items_prepared
+# Check sample images exist
+ls datasets/Handwriting/iam_words/words/a01/ | head -5
 ```
 
 ---
 
-## Phase 2: Train YOLOv8 for Region Detection (DAY 2)
+## Phase 2: Train YOLOv8 for Whiteboard Detection
 
-### Goal: Custom whiteboard region detection
+### Goal: Detect whiteboards in photos
 
-#### Why Train YOLOv8?
-- The default model detects generic objects (person, car, etc.)
-- We need to detect: header, text_block, bullet_list, action_item, diagram
+#### What You'll Learn
+- How to use a pretrained model as starting point
+- YOLO training loop and metrics (mAP, precision, recall)
+- Transfer learning: COCO weights → whiteboard detection
 
-#### Step 1: Create Train/Val Split (5 min)
+#### Dataset Info
+| Property | Value |
+|----------|-------|
+| Training images | 713 |
+| Classes | WhiteBoard, board, people |
+| Format | YOLO (ready to use) |
+
+#### Step 1: Train YOLOv8 (1-2 hours)
 ```bash
-python scripts/prepare_datasets.py split \
-    --dataset-dir datasets/synthetic/whiteboards \
-    --val-ratio 0.2
-```
+cd /home/irfana/Documents/repos/LLM-Trainings/whiteboard-ai
 
-#### Step 2: Train YOLOv8 (2-4 hours)
-```bash
-# Start with nano model (fast training)
 python training/train_yolo.py \
-    --data datasets/synthetic/whiteboard_yolo.yaml \
+    --data "datasets/WhiteBoard Detection.v1i.yolov8/data.yaml" \
     --model n \
-    --epochs 100 \
+    --epochs 50 \
     --batch 16 \
     --output runs/whiteboard_yolo
-
-# Monitor training
-# Open another terminal and run:
-# tensorboard --logdir runs/whiteboard_yolo
 ```
 
-#### Step 3: Test Custom Model
+**What each argument does:**
+- `--data`: Path to dataset config (tells YOLO where images/labels are)
+- `--model n`: YOLOv8-nano (smallest, ~6MB, fastest training)
+- `--epochs 50`: 50 passes through all training data
+- `--batch 16`: Process 16 images at a time (fits in 16GB VRAM)
+- `--output`: Where to save trained model
+
+#### Step 2: Monitor Training
+```bash
+# In another terminal
+tensorboard --logdir runs/whiteboard_yolo
+# Open http://localhost:6006
+```
+
+#### Step 3: Test Your Trained Model
 ```python
 from ultralytics import YOLO
 
 # Load your trained model
 model = YOLO('runs/whiteboard_yolo/yolo_whiteboard_n/weights/best.pt')
 
-# Test on a whiteboard image
-results = model('test_whiteboard.jpg')
+# Test on an image
+results = model('path/to/whiteboard_photo.jpg')
 results[0].show()  # Visualize detections
 ```
 
+#### Expected Results
+| Metric | Target | Notes |
+|--------|--------|-------|
+| mAP@0.5 | >0.70 | Mean Average Precision |
+| Precision | >0.80 | Correct detections / All detections |
+| Recall | >0.70 | Correct detections / All actual objects |
+
 ---
 
-## Phase 3: Fine-tune Qwen2.5 with LoRA (DAY 3-4)
+## Phase 3: Fine-tune TrOCR on IAM Handwriting
 
-### Goal: Better action item extraction
+### Goal: Improve handwriting recognition
 
-#### Why Fine-tune?
-- Zero-shot works okay but misses subtle patterns
-- Fine-tuning improves: JSON consistency, assignee detection, deadline parsing
+#### What You'll Learn
+- How to prepare image-text pairs for OCR training
+- Fine-tuning a Vision-Encoder-Decoder model
+- Character Error Rate (CER) as evaluation metric
 
-#### Step 1: Train with QLoRA (3-4 hours)
+#### Dataset Info
+| Property | Value |
+|----------|-------|
+| Source | IAM Handwriting Database |
+| Content | Individual handwritten words |
+| Format | Images + transcriptions in words_new.txt |
+
+#### Step 1: Prepare IAM Data
+```bash
+python scripts/prepare_datasets.py iam \
+    --input-dir datasets/Handwriting \
+    --output-dir datasets/iam_processed
+```
+
+This will:
+- Parse words_new.txt to get image paths and transcriptions
+- Split into train/val sets (80/20)
+- Create JSON metadata files for training
+
+#### Step 2: Train TrOCR (2-4 hours)
+```bash
+python training/train_trocr.py train \
+    --train-dir datasets/iam_processed/train \
+    --val-dir datasets/iam_processed/val \
+    --output-dir runs/trocr_handwriting \
+    --epochs 5 \
+    --batch-size 8 \
+    --lora
+```
+
+**What each argument does:**
+- `--train-dir`: Folder with training images + metadata
+- `--val-dir`: Folder with validation images + metadata
+- `--lora`: Use LoRA (Low-Rank Adaptation) to save memory
+- `--epochs 5`: 5 passes through data (OCR converges fast)
+- `--batch-size 8`: 8 images at a time
+
+#### Step 3: Test Your Trained TrOCR
+```python
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from peft import PeftModel
+from PIL import Image
+
+# Load base model + your LoRA adapter
+processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
+model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-handwritten")
+model = PeftModel.from_pretrained(model, "runs/trocr_handwriting/lora_adapter")
+
+# Test on an image
+image = Image.open("path/to/handwriting.png").convert("RGB")
+pixel_values = processor(images=image, return_tensors="pt").pixel_values
+generated_ids = model.generate(pixel_values)
+text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+print(text)
+```
+
+#### Expected Results
+| Metric | Target | Notes |
+|--------|--------|-------|
+| CER | <0.15 | Character Error Rate (lower is better) |
+| WER | <0.30 | Word Error Rate |
+
+---
+
+## Phase 4: Fine-tune Qwen2.5 with LoRA
+
+### Goal: Better action item extraction from meeting notes
+
+#### What You'll Learn
+- QLoRA: 4-bit quantization + LoRA for memory efficiency
+- Training LLMs on instruction-following tasks
+- JSON output formatting
+
+#### Step 1: Generate Synthetic Action Items Data
+```bash
+# We need meeting notes → action items pairs
+# Generate synthetic data since we don't have real meeting notes
+python scripts/generate_synthetic_data.py \
+    --output-dir datasets/synthetic \
+    --num-action-items 5000 \
+    --num-whiteboards 0 \
+    --num-handwriting 0
+```
+
+#### Step 2: Prepare for Training
+```bash
+python scripts/prepare_datasets.py action \
+    --input-jsonl datasets/synthetic/action_items.jsonl \
+    --output-dir datasets/action_items_prepared
+```
+
+#### Step 3: Train Qwen2.5 with QLoRA (3-4 hours)
 ```bash
 python training/train_qwen_lora.py train \
     --train-data datasets/action_items_prepared/train.json \
@@ -150,15 +228,20 @@ python training/train_qwen_lora.py train \
     --grad-accum 8
 ```
 
-#### Step 2: Test the Fine-tuned Model
+**What each argument does:**
+- `--batch-size 2`: Small batch (LLMs are memory hungry)
+- `--grad-accum 8`: Accumulate gradients over 8 steps = effective batch of 16
+- `--epochs 3`: LLMs need fewer epochs (they learn fast)
+
+#### Step 4: Test Your Fine-tuned Model
 ```bash
 python training/train_qwen_lora.py test \
     --adapter runs/qwen_action_items/lora_adapter
 ```
 
-#### Step 3: Integrate into Pipeline
+#### Step 5: Integrate into Pipeline
 ```python
-# In whiteboard_ai.py, modify the __init__ to load LoRA adapter
+# In whiteboard_ai.py, modify __init__ to load LoRA adapter
 from peft import PeftModel
 
 # After loading base model:
@@ -168,91 +251,61 @@ self.llm = PeftModel.from_pretrained(
 )
 ```
 
----
-
-## Phase 4: TrOCR Fine-tuning (OPTIONAL)
-
-### When to Fine-tune TrOCR?
-- Only if OCR accuracy is below 85% on your test set
-- If your handwriting style is very different from training data
-
-#### If Needed:
-```bash
-# Download IAM dataset (requires registration)
-# https://fki.tic.heia-fr.ch/databases/iam-handwriting-database
-
-# Prepare data
-python scripts/prepare_datasets.py iam \
-    --input-dir datasets/iam \
-    --output-dir datasets/iam_processed
-
-# Train with LoRA (memory efficient)
-python training/train_trocr.py train \
-    --train-dir datasets/iam_processed/train \
-    --val-dir datasets/iam_processed/val \
-    --output-dir runs/trocr_whiteboard \
-    --epochs 10 \
-    --batch-size 8 \
-    --lora
-```
+#### Expected Results
+| Metric | Target | Notes |
+|--------|--------|-------|
+| F1 Score | >0.80 | Precision-Recall balance |
+| JSON Parse Rate | >0.95 | Valid JSON output |
 
 ---
 
-## Phase 5: Evaluation & Iteration (DAY 5)
+## Phase 5: Integration & Evaluation
 
-### Evaluate Each Component
+### Goal: Put it all together and measure performance
 
-```bash
-# 1. Evaluate region detection
-python evaluation/evaluate_pipeline.py yolo \
-    --model runs/whiteboard_yolo/yolo_whiteboard_n/weights/best.pt \
-    --images datasets/synthetic/whiteboards/val/images \
-    --labels datasets/synthetic/whiteboards/val/labels
-
-# 2. Evaluate action extraction
-python evaluation/evaluate_pipeline.py action \
-    --model runs/qwen_action_items/lora_adapter \
-    --data datasets/action_items_prepared/val.json
+#### Step 1: Update whiteboard_ai.py
+```python
+# Load your trained models instead of pretrained
+self.region_model = YOLO('runs/whiteboard_yolo/.../best.pt')
+self.ocr_model = PeftModel.from_pretrained(base_ocr, 'runs/trocr_handwriting/lora_adapter')
+self.llm = PeftModel.from_pretrained(base_llm, 'runs/qwen_action_items/lora_adapter')
 ```
 
-### Target Metrics
+#### Step 2: Run Full Pipeline Evaluation
+```bash
+python evaluation/evaluate_pipeline.py full \
+    --yolo-model runs/whiteboard_yolo/.../best.pt \
+    --trocr-adapter runs/trocr_handwriting/lora_adapter \
+    --qwen-adapter runs/qwen_action_items/lora_adapter \
+    --test-images datasets/test_whiteboards/
+```
 
-| Component | Metric | Target | Acceptable |
-|-----------|--------|--------|------------|
-| YOLOv8 | mAP@0.5 | >0.80 | >0.70 |
-| TrOCR | CER | <0.10 | <0.15 |
-| Qwen2.5 | F1 | >0.85 | >0.75 |
-| Qwen2.5 | JSON Parse Rate | >0.95 | >0.90 |
+#### Step 3: Test with Real Photos
+- Take photos of real whiteboards with your phone
+- Run through the pipeline
+- Check if action items are correctly extracted
 
 ---
 
 ## Quick Reference: Commands
 
-### Data Generation
+### Training Commands
 ```bash
-# Generate all synthetic data
-python scripts/generate_synthetic_data.py --output-dir datasets/synthetic
+# YOLOv8 (1-2 hours)
+python training/train_yolo.py \
+    --data "datasets/WhiteBoard Detection.v1i.yolov8/data.yaml" \
+    --model n --epochs 50 --batch 16
 
-# Prepare for training
-python scripts/prepare_datasets.py action --input-jsonl datasets/synthetic/action_items.jsonl --output-dir datasets/action_items_prepared
-```
-
-### Training
-```bash
-# YOLOv8 (2-4 hours)
-python training/train_yolo.py --data datasets/synthetic/whiteboard_yolo.yaml --model n --epochs 100
+# TrOCR (2-4 hours)
+python training/train_trocr.py train \
+    --train-dir datasets/iam_processed/train \
+    --val-dir datasets/iam_processed/val \
+    --epochs 5 --batch-size 8 --lora
 
 # Qwen2.5 LoRA (3-4 hours)
-python training/train_qwen_lora.py train --train-data datasets/action_items_prepared/train.json --epochs 3
-```
-
-### Evaluation
-```bash
-# Region detection
-python evaluation/evaluate_pipeline.py yolo --model runs/whiteboard_yolo/.../best.pt --images ... --labels ...
-
-# Action extraction
-python evaluation/evaluate_pipeline.py action --model runs/qwen_action_items/lora_adapter --data ...
+python training/train_qwen_lora.py train \
+    --train-data datasets/action_items_prepared/train.json \
+    --epochs 3 --batch-size 2 --grad-accum 8
 ```
 
 ---
@@ -261,10 +314,8 @@ python evaluation/evaluate_pipeline.py action --model runs/qwen_action_items/lor
 
 | Task | VRAM Usage | Batch Size | Notes |
 |------|------------|------------|-------|
-| YOLOv8n training | ~4 GB | 16-32 | Fast, good for prototyping |
-| YOLOv8s training | ~6 GB | 8-16 | Better accuracy |
-| TrOCR full fine-tune | ~10 GB | 4-8 | Use LoRA instead |
-| TrOCR LoRA | ~6 GB | 8-16 | Recommended |
+| YOLOv8n training | ~4 GB | 16-32 | Fast, good for learning |
+| TrOCR LoRA | ~6 GB | 8-16 | Memory efficient |
 | Qwen2.5-7B QLoRA | ~10-12 GB | 2 | With gradient checkpointing |
 
 ---
@@ -276,55 +327,50 @@ python evaluation/evaluate_pipeline.py action --model runs/qwen_action_items/lor
 # Reduce batch size
 --batch-size 1 --grad-accum 16
 
-# Enable gradient checkpointing (already in scripts)
 # Clear CUDA cache
-import torch
-torch.cuda.empty_cache()
+python -c "import torch; torch.cuda.empty_cache()"
 ```
 
-### Poor OCR Quality
-1. Check image preprocessing (contrast, binarization)
-2. Ensure good lighting in photos
-3. Try different TrOCR models:
-   - `microsoft/trocr-base-handwritten` (faster, less accurate)
-   - `microsoft/trocr-large-handwritten` (current, good balance)
-
-### Action Items Not Detected
-1. Try different prompts (scripts/improved_prompts.py)
-2. Lower temperature (0.1-0.2) for more consistent JSON
-3. Check if meeting notes format matches training data
+### Poor Training Results
+1. Check if data paths are correct
+2. Verify labels match images
+3. Try more epochs or lower learning rate
 
 ---
 
-## Suggested Schedule
+## Schedule Summary
 
-| Day | Task | Duration |
-|-----|------|----------|
-| Day 1 | Test current system, improve prompts, generate data | 4 hours |
-| Day 2 | Train YOLOv8 for region detection | 4 hours |
-| Day 3 | Train Qwen2.5 with LoRA | 4 hours |
-| Day 4 | Integration and testing | 4 hours |
-| Day 5 | Evaluation, iteration, demo prep | 4 hours |
+| Phase | Task | Time |
+|-------|------|------|
+| 0 | Test pretrained models | Done |
+| 1 | Verify datasets | 15 min |
+| 2 | Train YOLOv8 | 1-2 hours |
+| 3 | Fine-tune TrOCR | 2-4 hours |
+| 4 | Fine-tune Qwen2.5 | 3-4 hours |
+| 5 | Integration & testing | 2 hours |
 
-**Total: ~20 hours to production-ready system**
+**Total: ~10-12 hours**
 
 ---
 
-## Files Created
+## Files Structure
 
 ```
 whiteboard-ai/
 ├── training/
 │   ├── ACTION_PLAN.md          # This file
-│   ├── DATASETS_GUIDE.md       # Dataset links and instructions
+│   ├── step0.md                # Phase 0 results
 │   ├── train_yolo.py           # YOLOv8 training script
 │   ├── train_trocr.py          # TrOCR training script
 │   └── train_qwen_lora.py      # Qwen2.5 LoRA training script
-├── scripts/
-│   ├── generate_synthetic_data.py  # Synthetic data generation
-│   ├── prepare_datasets.py         # Data preparation utilities
-│   └── improved_prompts.py         # Better prompts for zero-shot
-├── evaluation/
-│   └── evaluate_pipeline.py    # Evaluation scripts
-└── datasets/                   # Generated data goes here
+├── datasets/
+│   ├── WhiteBoard Detection.v1i.yolov8/  # Roboflow dataset (713 images)
+│   ├── Handwriting/                       # IAM dataset
+│   └── synthetic/                         # Generated action items
+├── runs/                       # Training outputs go here
+│   ├── whiteboard_yolo/
+│   ├── trocr_handwriting/
+│   └── qwen_action_items/
+└── evaluation/
+    └── evaluate_pipeline.py
 ```
