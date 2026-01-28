@@ -20,6 +20,8 @@ from typing import List, Dict, Tuple
 import json
 from dataclasses import dataclass
 import re
+import os
+from peft import PeftModel, LoraConfig
 from scripts.improved_prompts import get_best_prompt, WHITEBOARD_PROMPT
 
 @dataclass
@@ -42,16 +44,31 @@ class ActionItem:
 
 class WhiteboardAI:
     """Complete whiteboard analysis pipeline"""
-    
-    def __init__(self, device="cuda"):
+
+    def __init__(self, device="cuda", use_trained_models=True):
         self.device = device
         print(f"🚀 Initializing Whiteboard AI on {device}...")
-        
-        # 1. Region Detection Model (YOLOv8 - lightweight and fast)
+
+        # Get the base directory for model paths
+        # whiteboard_ai.py is in whiteboard-ai/, so parent is LLM-Trainings/
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # whiteboard-ai/
+        base_dir = os.path.dirname(script_dir)  # LLM-Trainings/
+
+        # 1. Region Detection Model (YOLOv8)
         print("📦 Loading region detection model...")
-        self.region_detector = YOLO('yolov8n.pt')  # Nano model for speed
-        
-        # 2. Handwriting OCR Model (TrOCR - Microsoft's handwriting model)
+        if use_trained_models:
+            # Use your trained whiteboard detector
+            yolo_path = os.path.join(base_dir, "runs/detect/runs/whiteboard_yolo/yolo_whiteboard_n/weights/best.pt")
+            if os.path.exists(yolo_path):
+                print(f"   Using trained model: {yolo_path}")
+                self.region_detector = YOLO(yolo_path)
+            else:
+                print(f"   ⚠️ Trained model not found, using pretrained yolov8n.pt")
+                self.region_detector = YOLO('yolov8n.pt')
+        else:
+            self.region_detector = YOLO('yolov8n.pt')
+
+        # 2. Handwriting OCR Model (TrOCR + LoRA)
         print("✍️  Loading handwriting OCR model...")
         self.ocr_processor = TrOCRProcessor.from_pretrained(
             'microsoft/trocr-large-handwritten'
@@ -59,10 +76,27 @@ class WhiteboardAI:
         self.ocr_model = VisionEncoderDecoderModel.from_pretrained(
             'microsoft/trocr-large-handwritten'
         ).to(device)
-        
-        # 3. Language Model for Action Item Extraction (Qwen2.5-7B with 4-bit quantization)
+
+        # Load TrOCR LoRA adapter if available
+        if use_trained_models:
+            trocr_lora_path = os.path.join(script_dir, "runs/trocr_handwriting/lora_adapter/adapter_weights.pt")
+            if os.path.exists(trocr_lora_path):
+                print(f"   Loading TrOCR LoRA adapter...")
+                # Load the LoRA weights we saved manually
+                adapter_state = torch.load(trocr_lora_path, map_location=device)
+                # Update model with LoRA weights
+                model_state = self.ocr_model.state_dict()
+                for key, value in adapter_state.items():
+                    if key in model_state:
+                        model_state[key] = value
+                self.ocr_model.load_state_dict(model_state)
+                print(f"   ✅ Loaded {len(adapter_state)} LoRA weights")
+            else:
+                print(f"   ⚠️ TrOCR LoRA not found, using base model")
+
+        # 3. Language Model for Action Item Extraction (Qwen2.5-7B + LoRA)
         print("🧠 Loading language model for action extraction...")
-        
+
         # 4-bit quantization config for memory efficiency
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -70,19 +104,29 @@ class WhiteboardAI:
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
         )
-        
+
         self.tokenizer = AutoTokenizer.from_pretrained(
             "Qwen/Qwen2.5-7B-Instruct",
             trust_remote_code=True
         )
-        
+
         self.llm = AutoModelForCausalLM.from_pretrained(
             "Qwen/Qwen2.5-7B-Instruct",
             quantization_config=quantization_config,
             device_map="auto",
             trust_remote_code=True
         )
-        
+
+        # Load Qwen LoRA adapter if available
+        if use_trained_models:
+            qwen_lora_path = os.path.join(script_dir, "runs/qwen_action_items/lora_adapter")
+            if os.path.exists(qwen_lora_path):
+                print(f"   Loading Qwen LoRA adapter...")
+                self.llm = PeftModel.from_pretrained(self.llm, qwen_lora_path)
+                print(f"   ✅ Qwen LoRA adapter loaded")
+            else:
+                print(f"   ⚠️ Qwen LoRA not found, using base model")
+
         print("✅ All models loaded successfully!")
         
     def detect_regions(self, image_path: str, conf_threshold: float = 0.25) -> List[Region]:
