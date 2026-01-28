@@ -21,7 +21,7 @@ import json
 from dataclasses import dataclass
 import re
 import os
-from peft import PeftModel, LoraConfig
+from peft import PeftModel, LoraConfig, get_peft_model, TaskType
 from scripts.improved_prompts import get_best_prompt, WHITEBOARD_PROMPT
 
 @dataclass
@@ -45,8 +45,9 @@ class ActionItem:
 class WhiteboardAI:
     """Complete whiteboard analysis pipeline"""
 
-    def __init__(self, device="cuda", use_trained_models=True):
+    def __init__(self, device="cuda", use_trained_models=True, ocr_backend="easyocr"):
         self.device = device
+        self.ocr_backend = ocr_backend
         print(f"🚀 Initializing Whiteboard AI on {device}...")
 
         # Get the base directory for model paths
@@ -68,31 +69,81 @@ class WhiteboardAI:
         else:
             self.region_detector = YOLO('yolov8n.pt')
 
-        # 2. Handwriting OCR Model (TrOCR + LoRA)
-        print("✍️  Loading handwriting OCR model...")
-        self.ocr_processor = TrOCRProcessor.from_pretrained(
-            'microsoft/trocr-large-handwritten'
-        )
-        self.ocr_model = VisionEncoderDecoderModel.from_pretrained(
-            'microsoft/trocr-large-handwritten'
-        ).to(device)
+        # 2. Handwriting OCR Model
+        print(f"✍️  Loading OCR model (backend={ocr_backend})...")
 
-        # Load TrOCR LoRA adapter if available
-        if use_trained_models:
-            trocr_lora_path = os.path.join(script_dir, "runs/trocr_handwriting/lora_adapter/adapter_weights.pt")
-            if os.path.exists(trocr_lora_path):
-                print(f"   Loading TrOCR LoRA adapter...")
-                # Load the LoRA weights we saved manually
-                adapter_state = torch.load(trocr_lora_path, map_location=device)
-                # Update model with LoRA weights
-                model_state = self.ocr_model.state_dict()
-                for key, value in adapter_state.items():
-                    if key in model_state:
-                        model_state[key] = value
-                self.ocr_model.load_state_dict(model_state)
-                print(f"   ✅ Loaded {len(adapter_state)} LoRA weights")
-            else:
-                print(f"   ⚠️ TrOCR LoRA not found, using base model")
+        if ocr_backend == "easyocr":
+            # EasyOCR handles multi-line text well (better for full whiteboard regions)
+            import easyocr
+            self.easyocr_reader = easyocr.Reader(['en'], gpu=(device == 'cuda'), verbose=False)
+            print("   ✅ EasyOCR loaded")
+            self.ocr_processor = None
+            self.ocr_model = None
+
+        elif ocr_backend == "hybrid":
+            # Hybrid: EasyOCR for text detection (CRAFT) + TrOCR for recognition
+            # This uses our trained TrOCR LoRA while having proper text detection
+            import easyocr
+            self.easyocr_reader = easyocr.Reader(['en'], gpu=(device == 'cuda'), verbose=False)
+            print("   ✅ EasyOCR detector loaded")
+
+            # Load TrOCR for recognition
+            self.ocr_processor = TrOCRProcessor.from_pretrained(
+                'microsoft/trocr-large-handwritten'
+            )
+            self.ocr_model = VisionEncoderDecoderModel.from_pretrained(
+                'microsoft/trocr-large-handwritten'
+            ).to(device)
+
+            # Load TrOCR LoRA adapter if available
+            if use_trained_models:
+                trocr_lora_path = os.path.join(script_dir, "runs/trocr_handwriting/lora_adapter/adapter_weights.pt")
+                if os.path.exists(trocr_lora_path):
+                    print(f"   Loading TrOCR LoRA adapter...")
+                    lora_config = LoraConfig(
+                        r=16,
+                        lora_alpha=32,
+                        target_modules=["q_proj", "v_proj", "k_proj", "out_proj"],
+                        lora_dropout=0.1,
+                        bias="none",
+                        task_type=TaskType.SEQ_2_SEQ_LM
+                    )
+                    self.ocr_model = get_peft_model(self.ocr_model, lora_config)
+                    adapter_state = torch.load(trocr_lora_path, map_location=device)
+                    self.ocr_model.load_state_dict(adapter_state, strict=False)
+                    print(f"   ✅ TrOCR + LoRA loaded ({len(adapter_state)} weights)")
+                else:
+                    print(f"   ⚠️ TrOCR LoRA not found, using base TrOCR")
+
+        else:
+            # TrOCR only - works best with single-line text crops
+            self.easyocr_reader = None
+            self.ocr_processor = TrOCRProcessor.from_pretrained(
+                'microsoft/trocr-large-handwritten'
+            )
+            self.ocr_model = VisionEncoderDecoderModel.from_pretrained(
+                'microsoft/trocr-large-handwritten'
+            ).to(device)
+
+            # Load TrOCR LoRA adapter if available
+            if use_trained_models:
+                trocr_lora_path = os.path.join(script_dir, "runs/trocr_handwriting/lora_adapter/adapter_weights.pt")
+                if os.path.exists(trocr_lora_path):
+                    print(f"   Loading TrOCR LoRA adapter...")
+                    lora_config = LoraConfig(
+                        r=16,
+                        lora_alpha=32,
+                        target_modules=["q_proj", "v_proj", "k_proj", "out_proj"],
+                        lora_dropout=0.1,
+                        bias="none",
+                        task_type=TaskType.SEQ_2_SEQ_LM
+                    )
+                    self.ocr_model = get_peft_model(self.ocr_model, lora_config)
+                    adapter_state = torch.load(trocr_lora_path, map_location=device)
+                    self.ocr_model.load_state_dict(adapter_state, strict=False)
+                    print(f"   ✅ Loaded {len(adapter_state)} LoRA weights")
+                else:
+                    print(f"   ⚠️ TrOCR LoRA not found, using base model")
 
         # 3. Language Model for Action Item Extraction (Qwen2.5-7B + LoRA)
         print("🧠 Loading language model for action extraction...")
@@ -185,7 +236,39 @@ class WhiteboardAI:
         
         # Convert back to PIL
         return Image.fromarray(binary).convert('RGB')
-    
+
+    def _trocr_recognize(self, text_crop: Image.Image) -> str:
+        """
+        Run TrOCR on a single text-line crop.
+        Used by hybrid backend.
+        """
+        # Ensure RGB
+        if text_crop.mode != 'RGB':
+            text_crop = text_crop.convert('RGB')
+
+        # Ensure minimum size
+        min_size = 32
+        if text_crop.width < min_size or text_crop.height < min_size:
+            ratio = max(min_size / text_crop.width, min_size / text_crop.height)
+            new_size = (int(text_crop.width * ratio), int(text_crop.height * ratio))
+            text_crop = text_crop.resize(new_size, Image.Resampling.LANCZOS)
+
+        # Process with TrOCR
+        pixel_values = self.ocr_processor(
+            images=text_crop,
+            return_tensors="pt"
+        ).pixel_values.to(self.device)
+
+        with torch.no_grad():
+            generated_ids = self.ocr_model.generate(inputs=pixel_values)
+
+        text = self.ocr_processor.batch_decode(
+            generated_ids,
+            skip_special_tokens=True
+        )[0]
+
+        return text.strip()
+
     def ocr_region(self, image: Image.Image, region: Region) -> str:
         """
         Perform OCR on a detected region
@@ -193,18 +276,56 @@ class WhiteboardAI:
         # Crop region from image
         x1, y1, x2, y2 = region.bbox
         cropped = image.crop((x1, y1, x2, y2))
-        
+
+        if self.ocr_backend == "easyocr":
+            # EasyOCR handles multi-line text directly
+            cropped_np = np.array(cropped)
+            results = self.easyocr_reader.readtext(cropped_np)
+            # Combine all detected text
+            text = " ".join([r[1] for r in results])
+            return text.strip()
+
+        if self.ocr_backend == "hybrid":
+            # Hybrid: EasyOCR detects text boxes, TrOCR reads each one
+            cropped_np = np.array(cropped)
+
+            # Step 1: Detect text regions with EasyOCR
+            # horizontal_list returns bounding boxes without running OCR
+            horizontal_list, free_list = self.easyocr_reader.detect(cropped_np)
+
+            texts = []
+            # Process horizontal text boxes (most common)
+            if horizontal_list and len(horizontal_list[0]) > 0:
+                for box in horizontal_list[0]:
+                    # box format: [x_min, x_max, y_min, y_max]
+                    bx1, bx2, by1, by2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
+                    # Add padding
+                    pad = 5
+                    bx1, by1 = max(0, bx1 - pad), max(0, by1 - pad)
+                    bx2, by2 = min(cropped.width, bx2 + pad), min(cropped.height, by2 + pad)
+
+                    # Crop the text box
+                    text_crop = cropped.crop((bx1, by1, bx2, by2))
+
+                    # Run TrOCR on this small crop
+                    text = self._trocr_recognize(text_crop)
+                    if text:
+                        texts.append(text)
+
+            return " ".join(texts).strip()
+
+        # TrOCR-only backend
         # Preprocess for better OCR
         preprocessed = self.preprocess_for_ocr(cropped)
-        
+
         # Run TrOCR
         pixel_values = self.ocr_processor(
-            images=preprocessed, 
+            images=preprocessed,
             return_tensors="pt"
         ).pixel_values.to(self.device)
-        
+
         with torch.no_grad():
-            generated_ids = self.ocr_model.generate(pixel_values)
+            generated_ids = self.ocr_model.generate(inputs=pixel_values)
         
         text = self.ocr_processor.batch_decode(
             generated_ids, 
