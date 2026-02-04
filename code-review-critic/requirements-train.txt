@@ -1,0 +1,13 @@
+# Core training
+unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git
+torch>=2.1.0
+transformers>=4.40.0
+datasets>=2.16.0
+trl>=0.8.0
+peft>=0.10.0
+accelerate>=0.27.0
+bitsandbytes>=0.43.0
+torchvision>=0.25.0
+
+# For quantization later
+# llama-cpp-python  # Install separately with CUDA support
