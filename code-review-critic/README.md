@@ -15,8 +15,11 @@ Fine-tuned LLM that provides constructive, actionable code review feedback on Py
 # Test with sample code
 python test_model.py
 
-# Review a real GitHub PR
+# Review a real GitHub PR (GPU)
 python review_pr.py https://github.com/owner/repo/pull/123
+
+# Review a real GitHub PR (CPU via Ollama)
+python review_pr_ollama.py https://github.com/owner/repo/pull/123
 ```
 
 ## Example Output
@@ -50,10 +53,15 @@ code-review-critic/
 ├── data/processed/          # Training data (JSONL)
 ├── output/
 │   ├── checkpoint-1036/     # Training checkpoint
-│   └── merged_model_v2/     # Working model (15GB)
+│   ├── merged_model_v2/     # Working model (15GB)
+│   └── gguf/                # Quantized GGUF model
 ├── train.py                 # QLoRA fine-tuning
 ├── test_model.py            # Test with samples
-├── review_pr.py             # Review GitHub PRs
+├── review_pr.py             # Review GitHub PRs (GPU)
+├── review_pr_ollama.py      # Review GitHub PRs (CPU/Ollama)
+├── quantize_cpu.py          # CPU-based GGUF quantization
+├── quantize_gpu.py          # GPU-based GGUF quantization
+├── Modelfile                # Ollama model definition
 ├── IMPROVEMENTS.md          # Future improvements
 └── CLAUDE_CODE_CONTEXT.md   # Full project context
 ```
@@ -98,10 +106,22 @@ NUM_EPOCHS = 2
 python test_model.py
 ```
 
-### Review a GitHub PR
+### Review a GitHub PR (GPU)
 
 ```bash
 python review_pr.py https://github.com/HKUDS/nanobot/pull/109
+```
+
+### Review a GitHub PR (CPU/Ollama)
+
+No GPU required. Uses the Ollama model via HTTP API.
+
+```bash
+# Ensure Ollama is running and model is loaded
+ollama list
+
+# Review PR
+python review_pr_ollama.py https://github.com/HKUDS/nanobot/pull/109
 ```
 
 ### Re-merge Model (if needed)
@@ -166,6 +186,13 @@ ollama run code-review-critic "Review: def get_user(id): return db.query(User).f
 - [ ] Create Docker image with Ollama
 - [ ] Build GitHub Action for automated PR reviews
 - [ ] Improve model quality (see IMPROVEMENTS.md)
+
+## PR Review Scripts
+
+| Script | Hardware | Dependencies | Speed |
+|--------|----------|--------------|-------|
+| `review_pr.py` | GPU (16GB VRAM) | unsloth, torch | Fast |
+| `review_pr_ollama.py` | CPU only | requests | Slower but portable |
 
 ## Requirements
 
