@@ -56,6 +56,10 @@ checkpoints/
 *.onnx
 *.bin
 *.safetensors
+output
+
+## MD's
+CLAUDE_CODE_CONTEXT.md
 
 # Logs and outputs
 *.log

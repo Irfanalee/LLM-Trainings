@@ -4,8 +4,8 @@ Test the fine-tuned code review model.
 
 from unsloth import FastLanguageModel
 
-MODEL_PATH = "./output/merged_model"
-MAX_SEQ_LENGTH = 2048
+MODEL_PATH = "./output/merged_model_v2"  # Use latest checkpoint
+MAX_SEQ_LENGTH = 1536
 
 # Test code samples
 TEST_SAMPLES = [

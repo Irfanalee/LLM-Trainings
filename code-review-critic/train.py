@@ -16,25 +16,25 @@ from transformers import TrainingArguments
 
 # Model
 MODEL_NAME = "Qwen/Qwen2.5-Coder-7B-Instruct"
-MAX_SEQ_LENGTH = 2048
+MAX_SEQ_LENGTH = 1536
 
 # LoRA config
-LORA_R = 32  # Rank - higher = more capacity, more VRAM
+LORA_R = 64  # Rank - higher = more capacity, more VRAM
 LORA_ALPHA = 64  # Scaling factor, typically 2x rank
-LORA_DROPOUT = 0.05
+LORA_DROPOUT = 0  # Set to 0 to enable Unsloth fast patching optimizations
 
 # Training
 OUTPUT_DIR = "./output"
-BATCH_SIZE = 2  # Per device
-GRADIENT_ACCUMULATION = 8  # Effective batch = 2 * 8 = 16
+BATCH_SIZE = 1  # Per device (reduced for 16GB VRAM)
+GRADIENT_ACCUMULATION = 16  # Effective batch = 1 * 16 = 16
 LEARNING_RATE = 2e-4
-NUM_EPOCHS = 3
+NUM_EPOCHS = 2  ## anything more than 2 overfits quickly
 WARMUP_RATIO = 0.05
 SAVE_STEPS = 200
 LOGGING_STEPS = 25
 
 # Data
-TRAIN_FILE = "data/processed/train.jsonl"
+TRAIN_FILE = "data/processed/train_cleaned.jsonl" # cleaned files, look data repo for code
 EVAL_FILE = "data/processed/eval.jsonl"
 
 
