@@ -114,9 +114,55 @@ model.save_pretrained_merged('./output/merged_model_v2', tokenizer, save_method=
 "
 ```
 
+## Quantization (for CPU deployment)
+
+Convert to GGUF format for running on CPU with Ollama:
+
+### Option 1: CPU-based (Recommended for 16GB GPU)
+```bash
+# Install prerequisites
+sudo apt update && sudo apt install -y cmake build-essential
+
+# Quantize (~20-30 min, uses CPU only)
+python quantize_cpu.py
+```
+
+### Option 2: GPU-based (Requires 24GB+ VRAM)
+```bash
+# Faster but needs more VRAM
+python quantize_gpu.py
+```
+
+This creates `./output/gguf/code-review-critic-q4_k_m.gguf` (~4-5GB).
+
+### Ollama Setup
+
+```bash
+# Create Modelfile
+cat > Modelfile << 'EOF'
+FROM ./output/gguf/code-review-critic-q4_k_m.gguf
+
+TEMPLATE """<|im_start|>system
+{{ .System }}<|im_end|}
+<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"""
+
+SYSTEM "You are an expert code reviewer. Analyze the provided Python code and give constructive, specific feedback."
+
+PARAMETER stop "<|im_end|>"
+EOF
+
+# Create model
+ollama create code-review-critic -f Modelfile
+
+# Test
+ollama run code-review-critic "Review: def get_user(id): return db.query(User).first().name"
+```
+
 ## Next Steps
 
-- [ ] Quantize to GGUF Q4 (~4GB) for CPU deployment
 - [ ] Create Docker image with Ollama
 - [ ] Build GitHub Action for automated PR reviews
 - [ ] Improve model quality (see IMPROVEMENTS.md)
