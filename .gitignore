@@ -75,6 +75,7 @@ tensorboard/
 # HuggingFace cache
 .cache/
 huggingface/
+HF-Upload.md
 
 # Large archive files
 *.zip
