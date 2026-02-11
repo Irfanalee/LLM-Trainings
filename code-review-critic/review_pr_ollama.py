@@ -66,6 +66,9 @@ def review_code(filename: str, code: str) -> str:
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": False,
+            "options": {
+                "temperature": 0.4,
+            },
         },
         timeout=120,
     )

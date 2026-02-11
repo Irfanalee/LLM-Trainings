@@ -58,7 +58,7 @@ def review_code(model, tokenizer, filename: str, code: str) -> str:
         code = code[:3000] + "\n... (truncated)"
 
     prompt = f"""<|im_start|>system
-You are an expert code reviewer. Analyze the provided Python code and give constructive, specific feedback. Focus on bugs, potential issues, code quality, and improvements. Be direct and actionable.<|im_end|>
+You are an expert code reviewer. Analyze the provided Python code and give constructive, specific feedback. Focus on bugs, potential issues, code quality, and improvements. Be direct and actionable. Never say "I'm not sure" or "I think". Always provide specific, concrete feedback.<|im_end|>
 <|im_start|>user
 Review this Python code from `{filename}`:
 
@@ -73,7 +73,7 @@ Review this Python code from `{filename}`:
     outputs = model.generate(
         **inputs,
         max_new_tokens=512,
-        temperature=0.7,
+        temperature=0.4,
         top_p=0.9,
         do_sample=True,
         pad_token_id=tokenizer.eos_token_id,
