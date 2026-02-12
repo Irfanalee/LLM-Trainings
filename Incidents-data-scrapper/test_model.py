@@ -130,9 +130,10 @@ def generate_response(model, tokenizer, tech: str, error: str) -> str:
     
     outputs = model.generate(
         **inputs,
-        max_new_tokens=512,
-        temperature=0.7,
+        max_new_tokens=200,
+        temperature=0.4,
         top_p=0.9,
+        repetition_penalty=1.3,
         do_sample=True,
         pad_token_id=tokenizer.eos_token_id,
     )
