@@ -19,7 +19,7 @@ MODEL_NAME = "Qwen/Qwen2.5-Coder-7B-Instruct"
 MAX_SEQ_LENGTH = 1536
 
 # LoRA config
-LORA_R = 64  # Rank - higher = more capacity, more VRAM
+LORA_R = 32  # Rank - higher = more capacity, more VRAM
 LORA_ALPHA = 64  # Scaling factor, typically 2x rank
 LORA_DROPOUT = 0  # Set to 0 to enable Unsloth fast patching optimizations
 

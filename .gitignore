@@ -106,3 +106,8 @@ temp/
 # Linkedin Files
 *Linkedin*
 *LINKEDIN*
+
+benchmark_env/
+unsloth_compiled_cache/
+
+CLAUDE_CODE_PROMPT.md
