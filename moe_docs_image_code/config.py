@@ -10,7 +10,7 @@ from dataclasses import dataclass
 # PATHS
 # =============================================================================
 
-BASE_PATH = Path("/repos/LLM-Trainings/moe_docs_image_code")
+BASE_PATH = Path(__file__).parent
 
 @dataclass
 class PathConfig:

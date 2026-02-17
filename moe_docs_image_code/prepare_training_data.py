@@ -24,7 +24,7 @@ import io
 # =============================================================================
 
 # Input paths - update these to match your setup
-BASE_PATH = Path("/repos/LLM-Trainings/moe_docs_image_code")
+BASE_PATH = Path(__file__).parent
 DATASETS_PATH = BASE_PATH / "data" / "datasets"
 
 # Output paths

@@ -10,7 +10,7 @@ from pathlib import Path
 # CONFIGURATION
 # =============================================================================
 
-BASE_PATH = Path("/repos/LLM-Trainings/moe_docs_image_code")
+BASE_PATH = Path(__file__).parent
 MODEL_PATH = BASE_PATH / "output" / "lora_adapters"
 MAX_SEQ_LENGTH = 2048
 

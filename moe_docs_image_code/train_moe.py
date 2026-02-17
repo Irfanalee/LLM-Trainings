@@ -25,14 +25,14 @@ load_dotenv()
 # =============================================================================
 
 # Paths
-BASE_PATH = Path("/repos/LLM-Trainings/moe_docs_image_code")
+BASE_PATH = Path(__file__).parent
 TRAIN_FILE = BASE_PATH / "data" / "training" / "train.jsonl"
 EVAL_FILE = BASE_PATH / "data" / "training" / "eval.jsonl"
 OUTPUT_DIR = BASE_PATH / "output"
 
 # Model - Qwen3 MoE
 MODEL_NAME = "unsloth/Qwen3-30B-A3B"  # 30B total, 3B active
-MAX_SEQ_LENGTH = 2048
+MAX_SEQ_LENGTH = 1536
 
 # LoRA Configuration
 LORA_R = 32              # Rank
