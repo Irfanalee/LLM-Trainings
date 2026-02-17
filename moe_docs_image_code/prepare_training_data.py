@@ -164,28 +164,27 @@ def convert_cord_example(example) -> dict:
 def convert_cuad_example(example) -> dict:
     """Convert CUAD contract example to training format."""
     try:
-        question = example.get("question", "")
-        context = example.get("context", "")
-        answers = example.get("answers", {})
-        answer_text = answers.get("text", [""])[0] if answers.get("text") else ""
-        
-        # Skip if no answer
-        if not answer_text:
+        clause = example.get("clause", "").strip()
+        label = example.get("label", "").strip()
+
+        # Skip if no clause or label
+        if not clause or not label:
             return None
-        
+
         # Build response
         response = f"""**Document Type**: Legal Contract
 
-**Question**: {question}
+**Clause Type**: {label}
 
-**Answer**: {answer_text}
+**Extracted Clause**:
+{clause}
 
-**Context**: This clause appears in a commercial legal contract and relates to {question.split('"')[1] if '"' in question else 'contract terms'}."""
-        
+**Summary**: This is a "{label}" clause from a commercial legal contract. It defines specific terms and obligations related to {label.lower()} provisions."""
+
         return {
             "messages": [
                 {"role": "system", "content": CONTRACT_SYSTEM_PROMPT},
-                {"role": "user", "content": f"From this contract:\n\n{context[:2000]}\n\nQuestion: {question}"},
+                {"role": "user", "content": f"Identify and analyze the following contract clause:\n\n{clause[:2000]}"},
                 {"role": "assistant", "content": response}
             ],
             "_meta": {
@@ -193,7 +192,7 @@ def convert_cuad_example(example) -> dict:
                 "type": "contract"
             }
         }
-        
+
     except Exception as e:
         return None
 
