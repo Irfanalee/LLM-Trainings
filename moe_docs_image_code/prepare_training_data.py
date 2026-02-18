@@ -234,6 +234,49 @@ This information was extracted directly from the document based on the question 
         return None
 
 
+def convert_sroie_example(example) -> dict:
+    """Convert SROIE receipt example to training format."""
+    try:
+        company = (example.get("company") or "").strip()
+        date = (example.get("date") or "").strip()
+        address = (example.get("address") or "").strip()
+        total = (example.get("total") or "").strip()
+
+        if not any([company, date, total]):
+            return None
+
+        extracted = {
+            "vendor": company,
+            "date": date,
+            "address": address,
+            "total": total,
+        }
+
+        response = f"""**Document Type**: Receipt/Invoice
+
+**Extracted Data**:
+```json
+{json.dumps(extracted, indent=2)}
+```
+
+**Summary**: Receipt from {company or 'unknown vendor'} dated {date or 'unknown date'}. Total: {total or 'unknown'}."""
+
+        return {
+            "messages": [
+                {"role": "system", "content": INVOICE_SYSTEM_PROMPT},
+                {"role": "user", "content": "Extract all information from this receipt image."},
+                {"role": "assistant", "content": response}
+            ],
+            "_meta": {
+                "source": "sroie",
+                "type": "invoice"
+            }
+        }
+
+    except Exception:
+        return None
+
+
 # =============================================================================
 # MAIN PROCESSING
 # =============================================================================
@@ -253,20 +296,21 @@ def load_and_convert_cord():
             # Try HuggingFace
             dataset = load_dataset("naver-clova-ix/cord-v2")
         
-        # Process train split
-        split_name = "train" if "train" in dataset else list(dataset.keys())[0]
-        data = dataset[split_name]
-        
-        print(f"[CORD] Processing {len(data)} examples...")
-        
-        for example in tqdm(data, desc="CORD"):
-            converted = convert_cord_example(example)
-            if converted:
-                examples.append(converted)
-            
+        # Use all available splits to maximise invoice examples (CORD only has ~1000 total)
+        for split_name in ["train", "validation", "test"]:
+            if split_name not in dataset:
+                continue
+            data = dataset[split_name]
+            print(f"[CORD] Processing {split_name} ({len(data)} examples)...")
+            for example in tqdm(data, desc=f"CORD/{split_name}"):
+                converted = convert_cord_example(example)
+                if converted:
+                    examples.append(converted)
+                if len(examples) >= MAX_EXAMPLES_PER_DATASET:
+                    break
             if len(examples) >= MAX_EXAMPLES_PER_DATASET:
                 break
-        
+
         print(f"[CORD] Converted {len(examples)} examples")
         
     except Exception as e:
@@ -308,6 +352,31 @@ def load_and_convert_cuad():
     except Exception as e:
         print(f"[CUAD] Error: {e}")
     
+    return examples
+
+
+def load_and_convert_sroie():
+    """Load and convert SROIE receipt dataset from HuggingFace."""
+    print("\n[SROIE] Loading receipt dataset from HuggingFace...")
+
+    examples = []
+
+    try:
+        dataset = load_dataset("jinhybr/OCR-SROIE-English", split="train")
+        print(f"[SROIE] Processing {len(dataset)} examples...")
+
+        for example in tqdm(dataset, desc="SROIE"):
+            converted = convert_sroie_example(example)
+            if converted:
+                examples.append(converted)
+            if len(examples) >= MAX_EXAMPLES_PER_DATASET:
+                break
+
+        print(f"[SROIE] Converted {len(examples)} examples")
+
+    except Exception as e:
+        print(f"[SROIE] Error: {e}")
+
     return examples
 
 
@@ -408,10 +477,13 @@ def main():
     # Load and convert each dataset
     cord_examples = load_and_convert_cord()
     all_examples.extend(cord_examples)
-    
+
+    sroie_examples = load_and_convert_sroie()
+    all_examples.extend(sroie_examples)
+
     cuad_examples = load_and_convert_cuad()
     all_examples.extend(cuad_examples)
-    
+
     docvqa_examples = load_and_convert_docvqa()
     all_examples.extend(docvqa_examples)
     
