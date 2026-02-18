@@ -150,7 +150,6 @@ def convert_cord_example(example) -> dict:
                 {"role": "user", "content": "Extract all information from this receipt image."},
                 {"role": "assistant", "content": response}
             ],
-            "image": example.get("image"),
             "_meta": {
                 "source": "cord",
                 "type": "invoice"
@@ -225,7 +224,6 @@ This information was extracted directly from the document based on the question 
                 {"role": "user", "content": f"Looking at this document, answer the following question:\n\n{question}"},
                 {"role": "assistant", "content": response}
             ],
-            "image": example.get("image"),
             "_meta": {
                 "source": "docvqa",
                 "type": "general"
@@ -250,7 +248,7 @@ def load_and_convert_cord():
         # Try loading from disk first
         cord_path = DATASETS_PATH / "cord"
         if cord_path.exists():
-            dataset = load_from_disk(str(cord_path))
+            dataset = load_from_disk(str(cord_path), keep_in_memory=False)
         else:
             # Try HuggingFace
             dataset = load_dataset("naver-clova-ix/cord-v2")
@@ -287,7 +285,7 @@ def load_and_convert_cuad():
         # Try loading from disk first
         cuad_path = DATASETS_PATH / "cuad"
         if cuad_path.exists():
-            dataset = load_from_disk(str(cuad_path))
+            dataset = load_from_disk(str(cuad_path), keep_in_memory=False)
         else:
             # Try HuggingFace
             dataset = load_dataset("theatticusproject/cuad-qa")
@@ -323,7 +321,7 @@ def load_and_convert_docvqa():
         # Try loading from disk first
         docvqa_path = DATASETS_PATH / "docvqa"
         if docvqa_path.exists():
-            dataset = load_from_disk(str(docvqa_path))
+            dataset = load_from_disk(str(docvqa_path), keep_in_memory=False)
         else:
             # Try HuggingFace
             dataset = load_dataset("HuggingFaceM4/DocumentVQA")
@@ -367,16 +365,13 @@ def save_training_data(examples: list):
     print(f"\nSaving {len(train_examples)} training examples...")
     with open(TRAIN_FILE, "w") as f:
         for ex in train_examples:
-            # Remove image data for text-only training (add back for VL training)
-            ex_copy = {k: v for k, v in ex.items() if k != "image"}
-            f.write(json.dumps(ex_copy) + "\n")
-    
+            f.write(json.dumps(ex) + "\n")
+
     # Save eval
     print(f"Saving {len(eval_examples)} eval examples...")
     with open(EVAL_FILE, "w") as f:
         for ex in eval_examples:
-            ex_copy = {k: v for k, v in ex.items() if k != "image"}
-            f.write(json.dumps(ex_copy) + "\n")
+            f.write(json.dumps(ex) + "\n")
     
     # Stats
     stats = {
