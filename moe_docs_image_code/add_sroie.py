@@ -1,18 +1,19 @@
 """
-Add SROIE receipt data to existing training files.
+Add CORD validation + test splits to existing training files.
 Appends to train.jsonl and eval.jsonl without reprocessing other datasets.
 """
 
 import json
 import random
 from pathlib import Path
-from datasets import load_dataset
+from datasets import load_from_disk
 from tqdm import tqdm
 
-BASE_PATH = Path(__file__).parent
-OUTPUT_DIR = BASE_PATH / "data" / "training"
-TRAIN_FILE = OUTPUT_DIR / "train.jsonl"
-EVAL_FILE  = OUTPUT_DIR / "eval.jsonl"
+BASE_PATH    = Path(__file__).parent
+DATASETS_PATH = BASE_PATH / "data" / "datasets"
+OUTPUT_DIR   = BASE_PATH / "data" / "training"
+TRAIN_FILE   = OUTPUT_DIR / "train.jsonl"
+EVAL_FILE    = OUTPUT_DIR / "eval.jsonl"
 
 TRAIN_SPLIT = 0.9
 SEED = 42
@@ -31,57 +32,86 @@ Respond with JSON containing:
 Then provide a brief summary."""
 
 
-def convert_sroie_example(example) -> dict:
-    company = (example.get("company") or "").strip()
-    date    = (example.get("date")    or "").strip()
-    address = (example.get("address") or "").strip()
-    total   = (example.get("total")   or "").strip()
+def convert_cord_example(example) -> dict:
+    try:
+        ground_truth = example.get("ground_truth", {})
+        if isinstance(ground_truth, str):
+            try:
+                ground_truth = json.loads(ground_truth)
+            except Exception:
+                ground_truth = {}
 
-    if not any([company, date, total]):
-        return None
+        extracted = {"vendor": None, "date": None, "items": [], "subtotal": None, "tax": None, "total": None}
+        gt = ground_truth.get("gt_parse", ground_truth)
 
-    extracted = {"vendor": company, "date": date, "address": address, "total": total}
+        menu = gt.get("menu", [])
+        for item in menu:
+            if isinstance(item, dict):
+                extracted["items"].append({
+                    "name": item.get("nm", ""),
+                    "count": item.get("cnt", 1),
+                    "price": item.get("price", "")
+                })
 
-    response = f"""**Document Type**: Receipt/Invoice
+        total_info = gt.get("total", {})
+        if isinstance(total_info, dict):
+            extracted["total"] = total_info.get("total_price")
+            extracted["tax"]   = total_info.get("tax_price")
+
+        sub_total = gt.get("sub_total", {})
+        if isinstance(sub_total, dict):
+            extracted["subtotal"] = sub_total.get("subtotal_price")
+
+        response = f"""**Document Type**: Receipt/Invoice
 
 **Extracted Data**:
 ```json
 {json.dumps(extracted, indent=2)}
 ```
 
-**Summary**: Receipt from {company or 'unknown vendor'} dated {date or 'unknown date'}. Total: {total or 'unknown'}."""
+**Summary**: This is a receipt containing {len(extracted['items'])} item(s)."""
 
-    return {
-        "messages": [
-            {"role": "system",    "content": INVOICE_SYSTEM_PROMPT},
-            {"role": "user",      "content": "Extract all information from this receipt image."},
-            {"role": "assistant", "content": response}
-        ],
-        "_meta": {"source": "sroie", "type": "invoice"}
-    }
+        if extracted["total"]:
+            response += f" The total amount is {extracted['total']}."
+
+        return {
+            "messages": [
+                {"role": "system",    "content": INVOICE_SYSTEM_PROMPT},
+                {"role": "user",      "content": "Extract all information from this receipt image."},
+                {"role": "assistant", "content": response}
+            ],
+            "_meta": {"source": "cord", "type": "invoice"}
+        }
+    except Exception:
+        return None
 
 
 def main():
-    print("Loading SROIE from HuggingFace...")
-    dataset = load_dataset("jinhybr/OCR-SROIE-English", split="train")
-    print(f"Processing {len(dataset)} examples...")
+    cord_path = DATASETS_PATH / "cord"
+    print(f"Loading CORD from {cord_path} ...")
+    dataset = load_from_disk(str(cord_path), keep_in_memory=False)
 
     examples = []
-    for example in tqdm(dataset, desc="SROIE"):
-        converted = convert_sroie_example(example)
-        if converted:
-            examples.append(converted)
+    for split in ["validation", "test"]:
+        if split not in dataset:
+            print(f"  Split '{split}' not found, skipping.")
+            continue
+        data = dataset[split]
+        print(f"  Processing {split} ({len(data)} examples)...")
+        for example in tqdm(data, desc=f"CORD/{split}"):
+            converted = convert_cord_example(example)
+            if converted:
+                examples.append(converted)
 
-    print(f"Converted {len(examples)} examples")
+    print(f"\nConverted {len(examples)} examples")
 
-    # Split
+    # Split and append
     random.seed(SEED)
     random.shuffle(examples)
-    split_idx     = int(len(examples) * TRAIN_SPLIT)
+    split_idx      = int(len(examples) * TRAIN_SPLIT)
     train_examples = examples[:split_idx]
     eval_examples  = examples[split_idx:]
 
-    # Append to existing files
     with open(TRAIN_FILE, "a") as f:
         for ex in train_examples:
             f.write(json.dumps(ex) + "\n")
@@ -90,7 +120,7 @@ def main():
         for ex in eval_examples:
             f.write(json.dumps(ex) + "\n")
 
-    print(f"\nAppended {len(train_examples)} to train.jsonl")
+    print(f"Appended {len(train_examples)} to train.jsonl")
     print(f"Appended {len(eval_examples)} to eval.jsonl")
     print("Done.")
 
