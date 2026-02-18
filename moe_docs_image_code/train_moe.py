@@ -31,7 +31,7 @@ EVAL_FILE = BASE_PATH / "data" / "training" / "eval.jsonl"
 OUTPUT_DIR = BASE_PATH / "output"
 
 # Model - Qwen3 MoE
-MODEL_NAME = "unsloth/Qwen3-30B-A3B"  # 30B total, 3B active
+MODEL_NAME =  "unsloth/gpt-oss-20b" #"unsloth/Qwen3-30B-A3B"  # 30B total, 3B active
 MAX_SEQ_LENGTH = 1536
 
 # LoRA Configuration

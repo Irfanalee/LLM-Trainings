@@ -150,7 +150,8 @@ def generate_response(model, tokenizer, system: str, user: str) -> str:
     
     # Tokenize
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    
+    input_length = inputs["input_ids"].shape[1]
+
     # Generate
     with torch.no_grad():
         outputs = model.generate(
@@ -161,15 +162,12 @@ def generate_response(model, tokenizer, system: str, user: str) -> str:
             do_sample=True,
             pad_token_id=tokenizer.eos_token_id,
         )
-    
-    # Decode
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-    # Extract assistant response (after the prompt)
-    if prompt in response:
-        response = response[len(prompt):].strip()
-    
-    return response
+
+    # Decode only the newly generated tokens
+    generated_tokens = outputs[0][input_length:]
+    response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+
+    return response.strip()
 
 
 def run_tests(model, tokenizer):
