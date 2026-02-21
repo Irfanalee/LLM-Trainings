@@ -1,5 +1,5 @@
 """
-Export Fine-tuned Model to GGUF format for Ollama / llama.cpp
+Export Fine-tuned Qwen1.5-MoE-A2.7B model to GGUF format for Ollama / llama.cpp
 """
 
 import os
@@ -9,7 +9,7 @@ from unsloth import FastLanguageModel
 BASE_PATH  = Path(__file__).parent
 MODEL_PATH = BASE_PATH / "output" / "lora_adapters"
 GGUF_PATH  = BASE_PATH / "output" / "gguf"
-MAX_SEQ_LENGTH = 1536
+MAX_SEQ_LENGTH = 2048
 
 # Quantization options (pick one):
 #   "q4_k_m"  — best balance of size and quality (recommended)

@@ -1,6 +1,6 @@
 """
 Configuration for Document Intelligence MoE
-Using Qwen3-30B-A3B with Unsloth
+Using Qwen1.5-MoE-A2.7B-Chat with Unsloth
 """
 
 from pathlib import Path
@@ -32,9 +32,9 @@ class PathConfig:
 
 @dataclass
 class ModelConfig:
-    """Model configuration for Qwen3-30B-A3B."""
+    """Model configuration for Qwen1.5-MoE-A2.7B-Chat (14.3B total, 2.7B active)."""
     # Model
-    model_name: str = "unsloth/Qwen3-30B-A3B"
+    model_name: str = "Qwen/Qwen1.5-MoE-A2.7B-Chat"
     max_seq_length: int = 2048
     
     # Quantization

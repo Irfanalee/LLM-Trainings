@@ -1,10 +1,10 @@
 """
 Train Document Intelligence MoE Model
-Fine-tune Qwen3-30B-A3B using Unsloth's optimized MoE training
+Fine-tune Qwen1.5-MoE-A2.7B using Unsloth's optimized MoE training
 
-Model: Qwen3-30B-A3B (30B total, 3B active per token)
+Model: Qwen1.5-MoE-A2.7B-Chat (14.3B total, 2.7B active per token)
 Method: QLoRA with Unsloth's MoE Triton kernels
-Hardware: NVIDIA RTX A4000 16GB (or similar)
+Hardware: NVIDIA RTX A4000 16GB (or similar) — fits comfortably in 7GB weights
 
 Requirements:
     pip install unsloth
@@ -30,9 +30,9 @@ TRAIN_FILE = BASE_PATH / "data" / "training" / "train.jsonl"
 EVAL_FILE = BASE_PATH / "data" / "training" / "eval.jsonl"
 OUTPUT_DIR = BASE_PATH / "output"
 
-# Model - Qwen3 MoE
-MODEL_NAME =  "unsloth/gpt-oss-20b" #"unsloth/Qwen3-30B-A3B"  # 30B total, 3B active
-MAX_SEQ_LENGTH = 1536
+# Model - Qwen1.5 MoE
+MODEL_NAME = "Qwen/Qwen1.5-MoE-A2.7B-Chat"  # 14.3B total, 2.7B active
+MAX_SEQ_LENGTH = 2048
 
 # LoRA Configuration
 LORA_R = 32              # Rank
@@ -57,9 +57,9 @@ EVAL_STEPS = 100
 # =============================================================================
 
 def load_model():
-    """Load Qwen3-30B-A3B with Unsloth optimizations."""
+    """Load Qwen1.5-MoE-A2.7B-Chat with Unsloth optimizations."""
     print("=" * 60)
-    print("LOADING QWEN3-30B-A3B (MoE)")
+    print("LOADING QWEN1.5-MOE-A2.7B-CHAT (MoE)")
     print("=" * 60)
     print(f"Model: {MODEL_NAME}")
     print(f"Max sequence length: {MAX_SEQ_LENGTH}")
@@ -253,7 +253,7 @@ def save_model(model, tokenizer):
 def main():
     print("=" * 60)
     print("DOCUMENT INTELLIGENCE MOE TRAINING")
-    print("Qwen3-30B-A3B with Unsloth")
+    print("Qwen1.5-MoE-A2.7B-Chat with Unsloth")
     print("=" * 60)
     
     # Load model

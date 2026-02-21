@@ -12,7 +12,7 @@ from pathlib import Path
 
 BASE_PATH = Path(__file__).parent
 MODEL_PATH = BASE_PATH / "output" / "lora_adapters"
-MAX_SEQ_LENGTH = 2048
+MAX_SEQ_LENGTH = 2048  # Qwen1.5-MoE-A2.7B: ~7GB weights, plenty of headroom on 16GB
 
 # =============================================================================
 # TEST CASES
