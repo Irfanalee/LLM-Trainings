@@ -32,12 +32,12 @@ OUTPUT_DIR = BASE_PATH / "output"
 
 # Model - Qwen1.5 MoE
 MODEL_NAME = "Qwen/Qwen1.5-MoE-A2.7B-Chat"  # 14.3B total, 2.7B active
-MAX_SEQ_LENGTH = 2048
+MAX_SEQ_LENGTH = 1536    # Reduced from 2048 to save KV cache VRAM
 
 # LoRA Configuration
-LORA_R = 32              # Rank
-LORA_ALPHA = 64          # Scaling (2x rank)
-LORA_DROPOUT = 0.05
+LORA_R = 16              # Reduced from 32 — halves gradient memory on 60 experts
+LORA_ALPHA = 32          # Keep 2x rank
+LORA_DROPOUT = 0.0       # Must be 0 for Unsloth fast patching (saves significant VRAM)
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",  # Attention
     "gate_proj", "up_proj", "down_proj",      # MLP / Experts
