@@ -34,9 +34,38 @@ Document intelligence agent for processing and understanding documents.
 
 ---
 
-### 📁 [JSON-Asset-Tagger](./JSON-Asset-Tagger/) --ONHOLD
+### 📁 [JSON-Asset-Tagger](./JSON-Asset-Tagger/) -- ONHOLD
 
 Train a specialized JSON Asset Tagger model to extract equipment details from engineering text. Includes data generation, Jupyter tutorials, and fine-tuning instructions for Qwen2.5-Coder using LoRA on Google Colab or Ollama.
+
+---
+
+### 📁 [Incidents-data-scrapper](./Incidents-data-scrapper/) -- INPROGRESS
+
+Fine-tuned Mistral-NeMo-Minitron-8B-Instruct as a DevOps Incident Responder. Uses QLoRA (4-bit quantization + LoRA adapters) on RTX A4000 (16GB).
+
+| Component | Details |
+|-----------|---------|
+| Base Model | nvidia/Mistral-NeMo-Minitron-8B-Instruct |
+| Method | QLoRA (4-bit + LoRA, rank 32) |
+| Hardware | RTX A4000 16GB |
+
+**Status:** 🔄 Training in progress
+
+---
+
+### 📁 [WorldGuard](./WorldGuard/) -- INPROGRESS
+
+JEPA-inspired video world model for unsupervised CCTV anomaly detection. Trains on normal scenes only — anomalies are detected as high prediction error in latent space. No labels required.
+
+| Component | Details |
+|-----------|---------|
+| Architecture | I-JEPA (context encoder → predictor → EMA target encoder) |
+| Method | Latent space prediction (no pixel reconstruction) |
+| Hardware | RTX A4000 16GB |
+| Framework | Raw PyTorch (no HuggingFace Trainer) |
+
+**Status:** 🔄 Data pipeline and model architecture complete — training loop in progress
 
 ---
 
