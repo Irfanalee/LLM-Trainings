@@ -61,7 +61,7 @@ WorldGuard/
 - [x] Architecture design complete (see docs/architecture.md)
 - [x] Training plan complete
 - [x] Data pipeline — `extract_clips.py`, `dataset.py`, `augmentations.py`
-- [ ] JEPA model implementation — `models/encoder.py`, `predictor.py`, `jepa_model.py`
+- [x] JEPA model implementation — `models/encoder.py`, `predictor.py`, `jepa_model.py`
 - [ ] Training loop — `training/train.py`, `training/utils.py`
 - [ ] Threshold calibration — `training/calibrate.py`
 - [ ] Inference + heatmap — `inference/score_video.py`, `inference/heatmap.py`
