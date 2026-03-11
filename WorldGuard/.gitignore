@@ -1,4 +1,12 @@
-# Model weights and checkpoints
+# Override parent .gitignore — track WorldGuard source directories
+!models/
+!data/
+!training/
+!inference/
+!eval/
+!configs/
+
+# Model weights and checkpoints (still ignored within those dirs)
 checkpoints/
 *.pt
 *.pth
