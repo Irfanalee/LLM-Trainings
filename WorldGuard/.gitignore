@@ -1,0 +1,39 @@
+# Model weights and checkpoints
+checkpoints/
+*.pt
+*.pth
+
+# Video files
+*.mp4
+*.avi
+*.mkv
+
+# Data directories (raw footage and processed clips)
+data/raw/
+data/train/
+data/val/
+
+# Outputs (flagged clips, heatmaps)
+outputs/
+
+# W&B logs
+wandb/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Env
+.env

@@ -18,14 +18,20 @@ structure of normality and flags deviations.
 ## Where Things Live
 ```
 WorldGuard/
-├── configs/          # YAML hyperparameter configs + per-camera threshold JSONs
-├── data/             # Dataset classes, clip extraction, augmentations
-├── models/           # encoder.py, predictor.py, jepa_model.py
-├── training/         # train.py, calibrate.py, utils.py
-├── inference/        # score_video.py, heatmap.py, demo.py
-├── eval/             # ROC-AUC eval, t-SNE visualization
-├── checkpoints/      # Saved model weights (gitignored)
-└── outputs/          # Anomaly-flagged clips, heatmaps (gitignored)
+├── configs/                    # YAML hyperparameter configs
+│   ├── train_default.yaml      # Main training config
+│   └── thresholds/             # Per-camera threshold JSONs (cam01.json, etc.)
+├── data/                       # Dataset classes, clip extraction, augmentations
+│   ├── extract_clips.py        # PyAV clip extractor (run first)
+│   ├── dataset.py              # ClipDataset → (context_frames, target_frames)
+│   └── augmentations.py        # ConsistentAugment, NormalizeVideo
+├── models/                     # encoder.py, predictor.py, jepa_model.py
+├── training/                   # train.py, calibrate.py, utils.py
+├── inference/                  # score_video.py, heatmap.py, demo.py
+├── eval/                       # ROC-AUC eval, t-SNE visualization
+├── docs/                       # Architecture, runbooks, team decisions
+├── checkpoints/                # Saved model weights (gitignored)
+└── outputs/                    # Anomaly-flagged clips, heatmaps (gitignored)
 ```
 
 ## Core Rules
@@ -54,12 +60,12 @@ WorldGuard/
 ## State
 - [x] Architecture design complete (see docs/architecture.md)
 - [x] Training plan complete
-- [ ] Data pipeline (clip extraction) — IN PROGRESS
-- [ ] JEPA model implementation
-- [ ] Training loop
-- [ ] Threshold calibration
-- [ ] Inference + heatmap
-- [ ] Evaluation on UCSD Ped2
+- [x] Data pipeline — `extract_clips.py`, `dataset.py`, `augmentations.py`
+- [ ] JEPA model implementation — `models/encoder.py`, `predictor.py`, `jepa_model.py`
+- [ ] Training loop — `training/train.py`, `training/utils.py`
+- [ ] Threshold calibration — `training/calibrate.py`
+- [ ] Inference + heatmap — `inference/score_video.py`, `inference/heatmap.py`
+- [ ] Evaluation on UCSD Ped2 — `eval/eval_roc.py`
 
 ## What Not To Do
 - Do NOT use `torch.nn.DataParallel` — use single GPU only

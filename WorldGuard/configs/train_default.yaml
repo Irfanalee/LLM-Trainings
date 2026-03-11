@@ -1,0 +1,34 @@
+model:
+  name: vits16_jepa
+  encoder_dim: 384       # ViT-S hidden dim
+  predictor_layers: 4
+  predictor_heads: 6
+  ema_decay: 0.996       # EMA smoothing for target encoder
+
+data:
+  clip_frames: 16
+  context_frames: 12     # first 75% of clip → fed to context encoder
+  target_frames: 4       # last 25% of clip → predicted by predictor
+  stride: 2              # frame gap when sliding extraction window
+  frame_size: 224
+  train_dir: data/train
+  val_dir: data/val
+  num_workers: 4
+
+training:
+  batch_size: 16         # fits RTX A4000 16GB; reduce to 12 if OOM
+  epochs: 50
+  lr: 1.0e-4
+  weight_decay: 0.05
+  warmup_epochs: 5       # linear LR warmup before cosine decay
+  grad_clip: 1.0
+  grad_checkpoint: false # set true to save VRAM at the cost of speed
+
+logging:
+  wandb_project: worldguard
+  wandb_entity: null     # set to your W&B username/team
+  log_interval: 10       # log metrics every N steps
+
+checkpoints:
+  dir: checkpoints
+  save_interval: 5       # save checkpoint every N epochs
