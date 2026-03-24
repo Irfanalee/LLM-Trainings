@@ -1,0 +1,8 @@
+torch>=2.0
+torchvision>=0.15
+timm>=0.9
+PyYAML>=6.0
+Pillow>=9.0
+av>=10.0
+wandb>=0.13
+einops>=0.7
