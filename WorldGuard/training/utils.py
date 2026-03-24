@@ -64,26 +64,32 @@ class WandbLogger:
             name=config_name,
             config=config,
         )
+        # Declare independent x-axes so train steps and val epochs don't collide
+        wandb.define_metric("train/step")
+        wandb.define_metric("train/*", step_metric="train/step")
+        wandb.define_metric("gpu/*", step_metric="train/step")
+        wandb.define_metric("epoch")
+        wandb.define_metric("val/*", step_metric="epoch")
 
     def log_step(self, loss: float, lr: float, step: int) -> None:
         """Log per-step metrics: train/loss, train/lr, gpu/memory_mb."""
         wandb.log(
             {
+                "train/step": step,
                 "train/loss": loss,
                 "train/lr": lr,
                 "gpu/memory_mb": torch.cuda.memory_allocated() / 1e6,
-            },
-            step=step,
+            }
         )
 
     def log_epoch(self, mean_score: float, std_score: float, epoch: int) -> None:
         """Log per-epoch validation metrics: val/mean_score, val/std_score."""
         wandb.log(
             {
+                "epoch": epoch,
                 "val/mean_score": mean_score,
                 "val/std_score": std_score,
-            },
-            step=epoch,
+            }
         )
 
     def finish(self) -> None:

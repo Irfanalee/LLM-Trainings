@@ -64,7 +64,7 @@ def _assert_target_enc_not_in_optimizer(model: JEPAWorldModel, optimizer) -> Non
 def _build_loaders(config: dict, dummy: bool):
     if dummy:
         train_ds = DummyDataset(config, size=64)
-        val_ds = DummyDataset(config, size=16)
+        val_ds = DummyDataset(config, size=32)
     else:
         from data.dataset import ClipDataset
         train_ds = ClipDataset(config["data"]["train_dir"], config, augment=True)
@@ -102,7 +102,8 @@ def _run_validation(model: JEPAWorldModel, val_loader: DataLoader, device: torch
             scores.append(output.loss.item())
     model.train()
     score_tensor = torch.tensor(scores)
-    return score_tensor.mean().item(), score_tensor.std().item()
+    # correction=0 (population std) avoids NaN when val set yields only 1 batch
+    return score_tensor.mean().item(), score_tensor.std(correction=0).item()
 
 
 # ---------------------------------------------------------------------------
