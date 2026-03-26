@@ -45,7 +45,8 @@ from training.utils import load_checkpoint
 def _load_gt_from_masks(gt_dir: str) -> np.ndarray:
     """Load frame-level GT from a folder of binary .tif masks."""
     mask_files = sorted(
-        f for f in os.listdir(gt_dir) if f.lower().endswith(".tif")
+        f for f in os.listdir(gt_dir)
+        if f.lower().endswith((".tif", ".tiff", ".bmp", ".png"))
     )
     labels = []
     for fname in mask_files:
