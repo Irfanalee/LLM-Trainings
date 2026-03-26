@@ -69,15 +69,21 @@ def _load_gt_from_mat(mat_path: str) -> np.ndarray:
 
 
 def load_gt_labels(test_dir: str, video_name: str) -> np.ndarray:
-    """Load ground truth labels for a test video. Returns (n_frames,) int array."""
+    """Load ground truth labels for a test video. Returns (n_frames,) int array.
+
+    Supports three GT formats:
+      1. _gt/ subdirectory with binary .bmp/.tif masks (UCSD Ped2)
+      2. _gt.mat file (MATLAB format)
+      3. .npy file (ShanghaiTech test_frame_mask/)
+    """
     gt_base = os.path.join(test_dir, "Test_gt")
 
-    # Try 1: _gt subdirectory with binary .tif masks
+    # Try 1: _gt subdirectory with binary mask images (UCSD Ped2)
     gt_dir = os.path.join(gt_base, f"{video_name}_gt")
     if os.path.isdir(gt_dir):
         return _load_gt_from_masks(gt_dir)
 
-    # Try 2: .mat file
+    # Try 2: _gt.mat file
     mat_path = os.path.join(gt_base, f"{video_name}_gt.mat")
     if os.path.isfile(mat_path):
         return _load_gt_from_mat(mat_path)
@@ -87,9 +93,15 @@ def load_gt_labels(test_dir: str, video_name: str) -> np.ndarray:
     if os.path.isfile(mat_path2):
         return _load_gt_from_mat(mat_path2)
 
+    # Try 4: ShanghaiTech .npy frame mask (test_frame_mask/{video_name}.npy)
+    npy_path = os.path.join(test_dir, "test_frame_mask", f"{video_name}.npy")
+    if os.path.isfile(npy_path):
+        arr = np.load(npy_path).flatten()
+        return (arr > 0).astype(np.int32)
+
     raise FileNotFoundError(
         f"No GT found for {video_name}. "
-        f"Checked: {gt_dir}, {mat_path}, {mat_path2}"
+        f"Checked: {gt_dir}, {mat_path}, {mat_path2}, {npy_path}"
     )
 
 
@@ -167,10 +179,13 @@ def score_video_frames(
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="WorldGuard AUROC evaluation on UCSD Ped2")
+    parser = argparse.ArgumentParser(
+        description="WorldGuard frame-level AUROC evaluation"
+    )
     parser.add_argument("--checkpoint", required=True, help="Path to trained checkpoint")
     parser.add_argument("--test-dir", required=True,
-                        help="Root dir of UCSD Ped2 (contains Test/ and Test_gt/)")
+                        help="Dataset root. UCSD Ped2: contains Test/ and Test_gt/. "
+                             "ShanghaiTech: contains frames/ and test_frame_mask/")
     parser.add_argument("--output", default="outputs/eval",
                         help="Directory to save ROC curve PNG and results")
     args = parser.parse_args()
@@ -190,8 +205,18 @@ def main():
     frame_size = config["data"]["frame_size"]      # 224
     normalizer = NormalizeVideo()
 
-    # --- Find test videos ---
-    test_videos_dir = os.path.join(args.test_dir, "Test")
+    # --- Auto-detect dataset layout ---
+    # UCSD Ped2: test_dir/Test/<video_name>/
+    # ShanghaiTech: test_dir/frames/<video_name>/
+    if os.path.isdir(os.path.join(args.test_dir, "Test")):
+        test_videos_dir = os.path.join(args.test_dir, "Test")
+    elif os.path.isdir(os.path.join(args.test_dir, "frames")):
+        test_videos_dir = os.path.join(args.test_dir, "frames")
+    else:
+        raise FileNotFoundError(
+            f"Could not find Test/ or frames/ subdirectory in {args.test_dir}"
+        )
+
     video_names = sorted(
         d for d in os.listdir(test_videos_dir)
         if os.path.isdir(os.path.join(test_videos_dir, d))
@@ -201,7 +226,7 @@ def main():
     if not video_names:
         raise FileNotFoundError(f"No test video folders found in {test_videos_dir}")
 
-    print(f"Found {len(video_names)} test videos.")
+    print(f"Found {len(video_names)} test videos in {test_videos_dir}")
 
     all_scores = []
     all_labels = []

@@ -15,6 +15,10 @@ checkpoints/
 *.mp4
 *.avi
 *.mkv
+data/UCSDpeds2/
+data/shanghaitech/
+data/vidf/
+
 
 # Data directories (raw footage and processed clips)
 data/raw/
