@@ -93,7 +93,12 @@ def load_gt_labels(test_dir: str, video_name: str) -> np.ndarray:
     if os.path.isfile(mat_path2):
         return _load_gt_from_mat(mat_path2)
 
-    # Try 4: ShanghaiTech .npy frame mask (test_frame_mask/{video_name}.npy)
+    # Try 4: _gt folder inside Test/ dir (UCSD Ped2 layout where GT lives next to frames)
+    gt_dir2 = os.path.join(test_dir, "Test", f"{video_name}_gt")
+    if os.path.isdir(gt_dir2):
+        return _load_gt_from_masks(gt_dir2)
+
+    # Try 5: ShanghaiTech .npy frame mask (test_frame_mask/{video_name}.npy)
     npy_path = os.path.join(test_dir, "test_frame_mask", f"{video_name}.npy")
     if os.path.isfile(npy_path):
         arr = np.load(npy_path).flatten()
@@ -101,7 +106,7 @@ def load_gt_labels(test_dir: str, video_name: str) -> np.ndarray:
 
     raise FileNotFoundError(
         f"No GT found for {video_name}. "
-        f"Checked: {gt_dir}, {mat_path}, {mat_path2}, {npy_path}"
+        f"Checked: {gt_dir}, {gt_dir2}, {mat_path}, {mat_path2}, {npy_path}"
     )
 
 
