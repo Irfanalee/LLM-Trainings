@@ -98,29 +98,40 @@ CCTV Video Stream
       │
       ▼
 ┌──────────────────────────────────────────┐
-│           JEPA WORLD MODEL               │
+│      STAGE 1 — JEPA WORLD MODEL          │
 │                                          │
 │  Context Encoder (ViT-S/16)              │
 │       → z_ctx  [B, T_ctx, D]             │
 │                                          │
 │  Predictor (Transformer, 4 layers)       │
-│       → z_pred [B, T_future, D]          │
+│       → z_pred [B, N, D]                 │
 │                                          │
 │  Target Encoder (EMA — no gradients)     │
-│       → z_tgt  [B, T_future, D]          │
+│       → z_tgt  [B, N, D]                 │
 │                                          │
-│  Loss = L2(z_pred, z_tgt)               │
+│  Anomaly score = L2(z_pred, z_tgt)      │
 │  ↑ latent space only — never pixels      │
 └──────────────────────────────────────────┘
-      │
+      │ score > threshold?
+      ▼
+┌──────────────────────────────────────────┐
+│   STAGE 2 — FEEDBACK CLASSIFIER          │
+│   (optional — trains on human labels)    │
+│                                          │
+│  z_pred → mean pool → MLP → prob         │
+│  "Is this a real threat or a false       │
+│   positive for this specific camera?"    │
+└──────────────────────────────────────────┘
+      │ prob > 0.5?
       ▼
 ┌─────────────────────┐
-│   Anomaly Scorer    │  mean prediction error per clip
-│   + Spatial Heatmap │  per-patch error → 224×224 overlay
+│   Final Alert        │  score + heatmap + clip saved
 └─────────────────────┘
 ```
 
-The model **never trains on anomalies**. It learns the statistical structure of normality. At inference, anything that breaks that structure produces a spike in latent prediction error.
+**Stage 1** never trains on anomalies — it learns the statistical structure of normality. Anything that breaks that structure spikes the prediction error.
+
+**Stage 2** is optional and camera-specific — trained on your feedback after deployment. It learns "what counts as a real alert on this camera" by distinguishing true anomalies from acceptable false positives (e.g. a delivery truck, a cleaner with a mop).
 
 ---
 
@@ -151,7 +162,7 @@ pip install -r requirements.txt
 from huggingface_hub import hf_hub_download
 
 path = hf_hub_download(
-    repo_id="irfanalii/worldguard",
+    repo_id="irfanalee/worldguard",
     filename="checkpoints/train_default_epoch050_val0.0191.pt"
 )
 ```
@@ -191,6 +202,36 @@ python training/calibrate.py \
   --checkpoint checkpoints/best.pt \
   --val-dir data/val \
   --camera-id cam01
+```
+
+### 6. Reduce false positives with the feedback classifier (Stage 2)
+
+After running Stage 1 on real footage, review flagged clips and train a lightweight
+classifier to distinguish true anomalies from acceptable false positives:
+
+```bash
+# Step 1 — score footage (saves z_pred embeddings automatically)
+python inference/score_video.py \
+  --video footage.mp4 --checkpoint checkpoints/best.pt --camera-id cam01
+
+# Step 2 — label flagged clips interactively
+python training/review_anomalies.py \
+  --embeddings-dir outputs/embeddings \
+  --labels-file data/feedback/labels.json \
+  --camera-id cam01
+
+# Step 3 — train Stage 2 classifier (~40+ labels recommended)
+python training/train_feedback.py \
+  --labels-file data/feedback/labels.json \
+  --embeddings-dir outputs/embeddings \
+  --camera-id cam01 \
+  --output checkpoints/feedback_cam01.pt
+
+# Step 4 — score with both stages
+python inference/score_video.py \
+  --video footage.mp4 --checkpoint checkpoints/best.pt \
+  --camera-id cam01 \
+  --feedback-classifier checkpoints/feedback_cam01.pt
 ```
 
 ---

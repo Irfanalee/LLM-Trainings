@@ -95,6 +95,16 @@ We **never train on anomalies at all.** The model trains only on normal footage.
 
 This is closer to how humans notice anomalies: not by recognizing known threats, but by detecting that something doesn't fit the expected pattern.
 
+### Stage 2 — Feedback Classifier (optional)
+
+After deployment, false positives can be reduced using a camera-specific feedback classifier. A human reviews flagged clips and labels them (`true anomaly` / `false positive`). A lightweight MLP trains on the JEPA `z_pred` embeddings — the JEPA model itself is never modified.
+
+```
+Stage 1 (JEPA) flags clip → human labels it → Stage 2 MLP trains on that label
+```
+
+~40 labelled clips per camera is enough to meaningfully reduce false positives.
+
 ---
 
 ## 🏗️ Architecture
@@ -145,13 +155,16 @@ WorldGuard/
 │   ├── CLAUDE.md                   # "EMA encoder must NEVER receive gradients"
 │   ├── encoder.py                  # ViT-S/16 context + EMA target encoder
 │   ├── predictor.py                # Temporal predictor transformer
-│   └── jepa_model.py               # Full JEPA forward pass + EMA update logic
+│   ├── jepa_model.py               # Full JEPA forward pass + EMA update logic
+│   └── feedback_classifier.py      # Stage 2 MLP — trains on human feedback labels
 │
 ├── training/
 │   ├── CLAUDE.md                   # "Labels are forbidden in train.py"
 │   ├── train.py                    # Main training loop — AdamW + cosine LR + W&B
 │   ├── calibrate.py                # Threshold calibration: mean + 2.5σ per camera
-│   └── utils.py                    # EMA update, logging, checkpointing
+│   ├── utils.py                    # EMA update, logging, checkpointing
+│   ├── review_anomalies.py         # Interactive CLI to label flagged clips
+│   └── train_feedback.py           # Train Stage 2 classifier on labelled embeddings
 │
 ├── inference/
 │   ├── CLAUDE.md                   # Heatmap contracts, threshold loading rules
@@ -159,8 +172,14 @@ WorldGuard/
 │   ├── heatmap.py                  # Per-patch error → 14×14 → upsample to 224×224
 │   └── demo.py                     # Live webcam / RTSP stream demo
 │
+├── data/
+│   ├── extract_clips.py            # PyAV clip extractor — run this first
+│   ├── dataset.py                  # ClipDataset → (context_frames, target_frames)
+│   ├── augmentations.py            # ConsistentAugment — same crop/flip across all frames
+│   └── feedback_dataset.py         # Dataset for Stage 2 labelled embeddings
+│
 ├── eval/
-│   ├── eval_roc.py                 # Frame-level AUROC on UCSD Ped2
+│   ├── eval_roc.py                 # Frame-level AUROC on UCSD Ped2 / ShanghaiTech
 │   └── visualize_errors.py         # t-SNE: normal vs anomaly embedding clusters
 │
 ├── docs/
@@ -257,13 +276,37 @@ python inference/score_video.py \
   --camera-id cam01
 ```
 
-### 6. Evaluate on UCSD Ped2
+### 6. Evaluate on UCSD Ped2 / ShanghaiTech
 
 ```bash
 python eval/eval_roc.py \
   --checkpoint checkpoints/best.pt \
   --test-dir data/ucsd_ped2/ \
   --output outputs/eval/
+```
+
+### 7. Reduce false positives with Stage 2 feedback
+
+```bash
+# Label flagged clips from a previous scoring run
+python training/review_anomalies.py \
+  --embeddings-dir outputs/embeddings \
+  --labels-file data/feedback/labels.json \
+  --camera-id cam01
+
+# Train the feedback classifier (~40 labels minimum)
+python training/train_feedback.py \
+  --labels-file data/feedback/labels.json \
+  --embeddings-dir outputs/embeddings \
+  --camera-id cam01 \
+  --output checkpoints/feedback_cam01.pt
+
+# Score with both stages active
+python inference/score_video.py \
+  --video footage.mp4 \
+  --checkpoint checkpoints/best.pt \
+  --camera-id cam01 \
+  --feedback-classifier checkpoints/feedback_cam01.pt
 ```
 
 ---
