@@ -6,11 +6,24 @@ For each 16-frame clip extracted from the video:
   3. Compare against per-camera threshold from configs/thresholds/{camera_id}.json
   4. Save anomalous clips and a heatmap PNG to --output-dir
 
+Optional Stage 2 feedback classifier (--feedback-classifier):
+  5. For Stage 1 flagged clips, run z_pred through FeedbackClassifier
+  6. Final alert only if Stage 2 probability > 0.5
+
 Usage:
+    # Stage 1 only:
     python inference/score_video.py \
         --video /path/to/video.mp4 \
-        --checkpoint checkpoints/train_default_epoch027_val0.0317.pt \
+        --checkpoint checkpoints/train_default_epoch050_val0.0191.pt \
         --camera-id cam01 \
+        --output-dir outputs/
+
+    # Stage 1 + Stage 2 feedback classifier:
+    python inference/score_video.py \
+        --video /path/to/video.mp4 \
+        --checkpoint checkpoints/train_default_epoch050_val0.0191.pt \
+        --camera-id cam01 \
+        --feedback-classifier checkpoints/feedback_cam01.pt \
         --output-dir outputs/
 """
 
@@ -23,7 +36,6 @@ import sys
 import av
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 from PIL import Image
 
@@ -31,6 +43,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from data.augmentations import NormalizeVideo
 from inference.heatmap import generate_heatmap, overlay_heatmap
+from models.feedback_classifier import FeedbackClassifier
 from models.jepa_model import JEPAWorldModel
 from training.utils import load_checkpoint
 
@@ -48,13 +61,25 @@ def load_threshold(camera_id: str) -> float:
     return data["threshold"]
 
 
+def load_feedback_classifier(path: str, device: torch.device) -> FeedbackClassifier:
+    """Load a trained FeedbackClassifier checkpoint."""
+    ckpt = torch.load(path, map_location="cpu", weights_only=True)
+    model = FeedbackClassifier().to(device)
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.eval()
+    val_acc = ckpt.get("val_acc", 0.0)
+    n_labels = ckpt.get("n_labels", 0)
+    print(f"Stage 2 classifier loaded | val_acc={val_acc:.3f} | trained on {n_labels} labels")
+    return model
+
+
 def score_clip(
     model,
     context: torch.Tensor,
     target: torch.Tensor,
     threshold: float,
     device: torch.device,
-) -> tuple[float, bool, np.ndarray]:
+) -> tuple[float, bool, np.ndarray, torch.Tensor]:
     """Score a single clip.
 
     Args:
@@ -65,7 +90,7 @@ def score_clip(
         device:    Compute device.
 
     Returns:
-        (anomaly_score, is_anomaly, heatmap_224x224)
+        (anomaly_score, is_anomaly, heatmap_224x224, z_pred)
     """
     ctx = context.unsqueeze(0).to(device)
     tgt = target.unsqueeze(0).to(device)
@@ -76,7 +101,7 @@ def score_clip(
 
     score = output.loss.item()
     is_anomaly = score > threshold
-    return score, is_anomaly, heatmap
+    return score, is_anomaly, heatmap, output.z_pred
 
 
 def _frames_to_tensor(frames: list, frame_size: int) -> torch.Tensor:
@@ -97,11 +122,13 @@ def main():
                         help="Frame stride for sliding window (default: 2)")
     parser.add_argument("--output-dir", default="outputs",
                         help="Directory to save anomaly clips and heatmaps")
+    parser.add_argument("--feedback-classifier", default=None,
+                        help="Optional Stage 2 classifier checkpoint path")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # --- Load model ---
+    # --- Load JEPA model (Stage 1) ---
     ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     config = ckpt["config"]
     model = JEPAWorldModel(config).to(device)
@@ -109,11 +136,15 @@ def main():
     model.eval()
 
     ctx_frames = config["data"]["context_frames"]   # 12
-    tgt_frames = config["data"]["target_frames"]     # 4
     clip_frames = config["data"]["clip_frames"]      # 16
     frame_size = config["data"]["frame_size"]        # 224
 
     normalizer = NormalizeVideo()
+
+    # --- Load Stage 2 classifier (optional) ---
+    feedback_model = None
+    if args.feedback_classifier:
+        feedback_model = load_feedback_classifier(args.feedback_classifier, device)
 
     # --- Load threshold ---
     threshold = load_threshold(args.camera_id)
@@ -122,13 +153,16 @@ def main():
     # --- Prepare output dirs ---
     clips_dir = os.path.join(args.output_dir, "anomaly_clips")
     heatmaps_dir = os.path.join(args.output_dir, "heatmaps")
+    embeddings_dir = os.path.join(args.output_dir, "embeddings")
     os.makedirs(clips_dir, exist_ok=True)
     os.makedirs(heatmaps_dir, exist_ok=True)
+    os.makedirs(embeddings_dir, exist_ok=True)
 
     csv_path = os.path.join(args.output_dir, f"{args.camera_id}_scores.csv")
     csv_file = open(csv_path, "w", newline="")
     writer = csv.writer(csv_file)
-    writer.writerow(["clip_idx", "start_frame", "score", "is_anomaly"])
+    writer.writerow(["clip_idx", "start_frame", "score", "stage1_anomaly",
+                     "stage2_prob", "final_anomaly"])
 
     # --- Extract and score clips via PyAV ---
     container = av.open(args.video)
@@ -149,41 +183,66 @@ def main():
         if len(frame_buffer) == clip_frames:
             start_frame = frame_idx - clip_frames
 
-            # Build tensor (T, C, H, W) in [0, 1]
             clip_tensor = _frames_to_tensor(frame_buffer, frame_size)
             clip_tensor = normalizer(clip_tensor)
 
-            context = clip_tensor[:ctx_frames]   # (12, 3, 224, 224)
-            target = clip_tensor[ctx_frames:]    # (4,  3, 224, 224)
+            context = clip_tensor[:ctx_frames]
+            target = clip_tensor[ctx_frames:]
 
-            score, is_anomaly, heatmap = score_clip(
+            score, stage1_anomaly, heatmap, z_pred = score_clip(
                 model, context, target, threshold, device
             )
 
-            writer.writerow([clip_idx, start_frame, f"{score:.6f}", int(is_anomaly)])
+            # Stage 2: run feedback classifier if loaded and Stage 1 flagged
+            stage2_prob = None
+            final_anomaly = stage1_anomaly
+            if stage1_anomaly and feedback_model is not None:
+                with torch.no_grad():
+                    stage2_prob = feedback_model(z_pred).item()
+                final_anomaly = stage2_prob > 0.5
 
-            if is_anomaly:
-                anomaly_count += 1
-                # Save heatmap overlaid on middle context frame
-                mid_frame = np.array(
-                    frame_buffer[ctx_frames // 2].resize((frame_size, frame_size))
-                )
-                overlay = overlay_heatmap(mid_frame, heatmap)
-                heatmap_path = os.path.join(
-                    heatmaps_dir, f"{args.camera_id}_clip{clip_idx:06d}.png"
-                )
-                Image.fromarray(overlay).save(heatmap_path)
+            writer.writerow([
+                clip_idx, start_frame, f"{score:.6f}",
+                int(stage1_anomaly),
+                f"{stage2_prob:.4f}" if stage2_prob is not None else "",
+                int(final_anomaly),
+            ])
 
-                # Save raw clip tensor
-                clip_path = os.path.join(
-                    clips_dir, f"{args.camera_id}_clip{clip_idx:06d}_score{score:.4f}.pt"
+            if stage1_anomaly:
+                # Always save embedding for human review / future training
+                emb_path = os.path.join(
+                    embeddings_dir, f"{args.camera_id}_clip{clip_idx:06d}_emb.pt"
                 )
-                torch.save(clip_tensor, clip_path)
+                torch.save(z_pred.squeeze(0).cpu(), emb_path)  # (196, 384)
 
-                print(
-                    f"  ANOMALY clip {clip_idx:06d} | "
-                    f"frame {start_frame} | score {score:.4f} > {threshold:.4f}"
-                )
+                # Save heatmap and clip only for final alerts
+                if final_anomaly:
+                    anomaly_count += 1
+                    mid_frame = np.array(
+                        frame_buffer[ctx_frames // 2].resize((frame_size, frame_size))
+                    )
+                    overlay = overlay_heatmap(mid_frame, heatmap)
+                    heatmap_path = os.path.join(
+                        heatmaps_dir, f"{args.camera_id}_clip{clip_idx:06d}.png"
+                    )
+                    Image.fromarray(overlay).save(heatmap_path)
+
+                    clip_path = os.path.join(
+                        clips_dir, f"{args.camera_id}_clip{clip_idx:06d}_score{score:.4f}.pt"
+                    )
+                    torch.save(clip_tensor, clip_path)
+
+                    stage2_str = f" | stage2={stage2_prob:.3f}" if stage2_prob is not None else ""
+                    print(
+                        f"  ANOMALY clip {clip_idx:06d} | "
+                        f"frame {start_frame} | score {score:.4f}{stage2_str}"
+                    )
+                else:
+                    print(
+                        f"  filtered clip {clip_idx:06d} | "
+                        f"frame {start_frame} | score {score:.4f} | "
+                        f"stage2={stage2_prob:.3f} → false positive"
+                    )
 
             # Slide window
             frame_buffer = frame_buffer[args.stride:]
@@ -195,10 +254,11 @@ def main():
     container.close()
     csv_file.close()
 
-    print(f"\nDone. {clip_idx} clips scored, {anomaly_count} anomalies detected.")
-    print(f"Scores CSV  : {csv_path}")
-    print(f"Heatmaps    : {heatmaps_dir}/")
+    print(f"\nDone. {clip_idx} clips scored, {anomaly_count} final anomalies.")
+    print(f"Scores CSV   : {csv_path}")
+    print(f"Heatmaps     : {heatmaps_dir}/")
     print(f"Anomaly clips: {clips_dir}/")
+    print(f"Embeddings   : {embeddings_dir}/  ← label these with review_anomalies.py")
 
 
 if __name__ == "__main__":
