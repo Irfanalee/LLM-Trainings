@@ -287,26 +287,47 @@ python eval/eval_roc.py \
 
 ### 7. Reduce false positives with Stage 2 feedback
 
+**Step 1 — Score a video** (saves embeddings automatically):
+
 ```bash
-# Label flagged clips from a previous scoring run
+python inference/score_video.py \
+  --video footage.mp4 \
+  --checkpoint checkpoints/train_default_epoch050_val0.0191.pt \
+  --camera-id ucsd
+```
+
+> Flagged clips get their `z_pred` saved to `outputs/embeddings/`.
+
+**Step 2 — Label the flagged clips:**
+
+```bash
 python training/review_anomalies.py \
   --embeddings-dir outputs/embeddings \
   --labels-file data/feedback/labels.json \
-  --camera-id cam01
+  --camera-id ucsd
+```
 
-# Train the feedback classifier (~40 labels minimum)
+> Terminal prompts: `[t]rue anomaly` / `[f]alse positive` / `[s]kip` / `[q]uit`
+> GIFs with heatmap overlay are saved to `outputs/review_gifs/` — click to preview in VSCode.
+
+**Step 3 — Train Stage 2 classifier** (~40+ labels recommended):
+
+```bash
 python training/train_feedback.py \
   --labels-file data/feedback/labels.json \
   --embeddings-dir outputs/embeddings \
-  --camera-id cam01 \
-  --output checkpoints/feedback_cam01.pt
+  --camera-id ucsd \
+  --output checkpoints/feedback_ucsd.pt
+```
 
-# Score with both stages active
+**Step 4 — Score with both stages:**
+
+```bash
 python inference/score_video.py \
   --video footage.mp4 \
-  --checkpoint checkpoints/best.pt \
-  --camera-id cam01 \
-  --feedback-classifier checkpoints/feedback_cam01.pt
+  --checkpoint checkpoints/train_default_epoch050_val0.0191.pt \
+  --camera-id ucsd \
+  --feedback-classifier checkpoints/feedback_ucsd.pt
 ```
 
 ---
