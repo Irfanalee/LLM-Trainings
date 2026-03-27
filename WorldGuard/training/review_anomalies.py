@@ -1,11 +1,13 @@
 """Human review CLI for labelling flagged anomaly clips.
 
-Loops over unlabelled embedding files and prompts the user to label each one.
-Labels are appended to a JSON file for use in Stage 2 classifier training.
+Renders each flagged clip as an animated GIF with heatmap overlay and opens it
+in the system image viewer so you can see the motion before labelling.
 
 Usage:
     python training/review_anomalies.py \
         --embeddings-dir outputs/embeddings \
+        --clips-dir outputs/anomaly_clips \
+        --heatmaps-dir outputs/heatmaps \
         --labels-file data/feedback/labels.json \
         --camera-id ucsd
 
@@ -20,9 +22,12 @@ import argparse
 import json
 import os
 
+import numpy as np
+import torch
+from PIL import Image
+
 
 def load_existing_labels(labels_file: str) -> set[str]:
-    """Return the set of clip filenames already labelled."""
     labelled = set()
     if not os.path.isfile(labels_file):
         return labelled
@@ -34,51 +39,118 @@ def load_existing_labels(labels_file: str) -> set[str]:
     return labelled
 
 
+def clip_number(emb_file: str) -> str:
+    """'ucsd_clip000042_emb.pt' → '000042'"""
+    return emb_file.replace("_emb.pt", "").split("_clip")[-1]
+
+
+def find_clip_tensor(clips_dir: str, camera_id: str, number: str) -> str | None:
+    if not os.path.isdir(clips_dir):
+        return None
+    for fname in os.listdir(clips_dir):
+        if fname.startswith(f"{camera_id}_clip{number}") and fname.endswith(".pt"):
+            return os.path.join(clips_dir, fname)
+    return None
+
+
+def render_gif(clip_path: str, heatmap_path: str | None, out_path: str, fps: int = 8) -> None:
+    """Render a clip tensor as an animated GIF with optional heatmap blend."""
+    clip = torch.load(clip_path, map_location="cpu", weights_only=True)  # (T, 3, H, W)
+    T, C, H, W = clip.shape
+
+    hmap = None
+    if heatmap_path and os.path.isfile(heatmap_path):
+        hmap = np.array(Image.open(heatmap_path).convert("RGB").resize((W, H)))
+
+    pil_frames = []
+    for t in range(T):
+        frame = (clip[t].permute(1, 2, 0).numpy() * 255).clip(0, 255).astype(np.uint8)
+        if hmap is not None:
+            frame = (frame * 0.6 + hmap * 0.4).clip(0, 255).astype(np.uint8)
+        pil_frames.append(Image.fromarray(frame))
+
+    duration_ms = int(1000 / fps)
+    pil_frames[0].save(
+        out_path,
+        save_all=True,
+        append_images=pil_frames[1:],
+        duration=duration_ms,
+        loop=0,
+    )
+
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Review and label anomaly clips for Stage 2 training"
+        description="Review anomaly clips as animated GIF and label for Stage 2 training"
     )
-    parser.add_argument("--embeddings-dir", required=True,
-                        help="Directory containing *_emb.pt files")
-    parser.add_argument("--labels-file", required=True,
-                        help="Path to append labels JSON (created if absent)")
-    parser.add_argument("--camera-id", required=True,
-                        help="Camera ID to filter embeddings (e.g. ucsd)")
+    parser.add_argument("--embeddings-dir", required=True)
+    parser.add_argument("--clips-dir", default=None)
+    parser.add_argument("--heatmaps-dir", default=None)
+    parser.add_argument("--labels-file", required=True)
+    parser.add_argument("--camera-id", required=True)
+    parser.add_argument("--fps", type=int, default=8,
+                        help="Animation speed (default: 8)")
     args = parser.parse_args()
+
+    base = os.path.dirname(os.path.abspath(args.embeddings_dir))
+    if args.clips_dir is None:
+        args.clips_dir = os.path.join(base, "anomaly_clips")
+    if args.heatmaps_dir is None:
+        args.heatmaps_dir = os.path.join(base, "heatmaps")
 
     os.makedirs(os.path.dirname(os.path.abspath(args.labels_file)), exist_ok=True)
 
-    # Find all embedding files for this camera
     all_files = sorted(
         f for f in os.listdir(args.embeddings_dir)
         if f.startswith(args.camera_id) and f.endswith("_emb.pt")
     )
 
     if not all_files:
-        print(f"No embedding files found for camera '{args.camera_id}' in {args.embeddings_dir}")
-        print("Run inference/score_video.py first to generate embeddings.")
+        print(f"No embeddings found for camera '{args.camera_id}' in {args.embeddings_dir}")
         return
 
     labelled = load_existing_labels(args.labels_file)
     pending = [f for f in all_files if f not in labelled]
 
-    print(f"\nCamera: {args.camera_id}")
-    print(f"Total embeddings : {len(all_files)}")
-    print(f"Already labelled : {len(labelled)}")
-    print(f"Pending review   : {len(pending)}")
-    print("\nControls: [t] true anomaly  [f] false positive  [s] skip  [q] quit\n")
+    print(f"\nCamera  : {args.camera_id}")
+    print(f"Total   : {len(all_files)}  |  Labelled: {len(labelled)}  |  Pending: {len(pending)}")
+    print("Each clip opens as an animated GIF (red = anomaly region, loops until you label it).")
+    print("Controls: [t] true anomaly  [f] false positive  [s] skip  [q] quit\n")
 
     if not pending:
         print("All clips already labelled.")
         return
 
+    gif_dir = os.path.join(os.path.dirname(os.path.abspath(args.embeddings_dir)),
+                           "review_gifs")
+    os.makedirs(gif_dir, exist_ok=True)
+    print(f"GIFs saved to: {gif_dir}")
+    print("Open them in VSCode Explorer (click to preview — animated GIFs play inline).\n")
+
     saved = 0
+
     with open(args.labels_file, "a") as out:
         for i, clip_file in enumerate(pending):
-            print(f"[{i+1}/{len(pending)}] {clip_file}")
+            number = clip_number(clip_file)
+            clip_path = find_clip_tensor(args.clips_dir, args.camera_id, number)
+            heatmap_path = os.path.join(args.heatmaps_dir, f"{args.camera_id}_clip{number}.png")
+
+            print(f"[{i+1}/{len(pending)}] clip {number}")
+
+            if clip_path:
+                gif_path = os.path.join(gif_dir, f"clip_{number}.gif")
+                try:
+                    render_gif(clip_path, heatmap_path, gif_path, fps=args.fps)
+                    print(f"  → {gif_path}")
+                except Exception as e:
+                    print(f"  (could not render GIF: {e})")
+            else:
+                print(f"  (clip tensor not found in {args.clips_dir} — label by number only)")
 
             while True:
-                key = input("  Label: ").strip().lower()
+                key = input("  Label [t/f/s/q]: ").strip().lower()
                 if key in ("t", "f", "s", "q"):
                     break
                 print("  Invalid — enter t / f / s / q")
@@ -92,12 +164,11 @@ def main() -> None:
                 continue
 
             label = 1 if key == "t" else 0
-            label_str = "true_anomaly" if label == 1 else "false_positive"
             record = {"clip": clip_file, "label": label, "camera_id": args.camera_id}
             out.write(json.dumps(record) + "\n")
             out.flush()
             saved += 1
-            print(f"  Saved as {label_str}.\n")
+            print(f"  Saved as {'true_anomaly' if label else 'false_positive'}.\n")
 
     print(f"\nDone. {saved} labels saved to {args.labels_file}")
     print("Run training/train_feedback.py to train the Stage 2 classifier.")
