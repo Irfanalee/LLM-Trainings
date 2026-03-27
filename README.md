@@ -64,6 +64,26 @@ Train a specialized JSON Asset Tagger model to extract equipment details from en
 
 ---
 
+### 📁 [moe_docs_image_code](./moe_docs_image_code/) -- INPROGRESS
+
+Fine-tuned Qwen1.5-MoE-A2.7B-Chat for structured document extraction using Unsloth QLoRA. Extracts structured JSON from invoices/receipts, legal contracts, and general document Q&A. Trained on CORD v2, CUAD, and DocVQA datasets.
+
+![Qwen](https://img.shields.io/badge/Model-Qwen1.5--MoE--A2.7B-0066CC?style=flat)
+![QLoRA](https://img.shields.io/badge/Method-QLoRA-8A2BE2?style=flat)
+![Unsloth](https://img.shields.io/badge/Unsloth-Fast_Training-8A2BE2?style=flat)
+![TRL](https://img.shields.io/badge/TRL-SFT_Trainer-FFD21E?style=flat)
+
+| Component | Details |
+|-----------|---------|
+| Base Model | Qwen/Qwen1.5-MoE-A2.7B-Chat (14.3B total, 2.7B active) |
+| Method | QLoRA (4-bit + LoRA, rank 16) |
+| Training Data | ~11,000 examples (CORD v2, CUAD, DocVQA) |
+| Hardware | RTX A4000 16GB |
+
+**Status:** 🔄 Training in progress
+
+---
+
 ### 📁 [Incidents-data-scrapper](./Incidents-data-scrapper/) -- INPROGRESS
 
 Fine-tuned Mistral-NeMo-Minitron-8B-Instruct as a DevOps Incident Responder. Uses QLoRA (4-bit quantization + LoRA adapters) on RTX A4000 (16GB).
@@ -85,22 +105,24 @@ Fine-tuned Mistral-NeMo-Minitron-8B-Instruct as a DevOps Incident Responder. Use
 
 ### 📁 [WorldGuard](./WorldGuard/) -- INPROGRESS
 
-JEPA-inspired video world model for unsupervised CCTV anomaly detection. Trains on normal scenes only — anomalies are detected as high prediction error in latent space. No labels required.
+JEPA-inspired video world model for unsupervised CCTV anomaly detection. Two-stage pipeline: Stage 1 trains on normal scenes only and detects anomalies as high latent prediction error (zero labels). Stage 2 is an optional per-camera feedback classifier that reduces false positives using human-reviewed labels.
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-Raw_Training_Loop-EE4C2C?style=flat&logo=pytorch&logoColor=white)
-![JEPA](https://img.shields.io/badge/Architecture-I--JEPA-0066CC?style=flat)
+![JEPA](https://img.shields.io/badge/Architecture-V--JEPA-0066CC?style=flat)
 ![timm](https://img.shields.io/badge/timm-Vision_Encoder-5C3EE8?style=flat)
 ![PyAV](https://img.shields.io/badge/PyAV-Video_I%2FO-FF6F00?style=flat)
 ![wandb](https://img.shields.io/badge/W%26B-Experiment_Tracking-FFBE00?style=flat&logo=weightsandbiases&logoColor=black)
 
 | Component | Details |
 |-----------|---------|
-| Architecture | I-JEPA (context encoder → predictor → EMA target encoder) |
-| Method | Latent space prediction (no pixel reconstruction) |
+| Architecture | V-JEPA (context encoder → predictor → EMA target encoder) |
+| Method | Latent space prediction — no pixel reconstruction, no anomaly labels |
 | Hardware | RTX A4000 16GB |
 | Framework | Raw PyTorch (no HuggingFace Trainer) |
+| UCSD Ped2 AUROC | 0.788 (50 epochs, balanced training) |
+| ShanghaiTech AUROC | 0.614 (50 epochs, balanced training) |
 
-**Status:** 🔄 Data pipeline and model architecture complete — training loop in progress
+**Status:** ✅ v0.1.0 — trained and benchmarked; Stage 2 feedback classifier complete
 
 ---
 
